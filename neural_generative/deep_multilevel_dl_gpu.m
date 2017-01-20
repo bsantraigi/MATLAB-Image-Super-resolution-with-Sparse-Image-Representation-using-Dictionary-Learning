@@ -5,8 +5,6 @@ imgPath = 'D:/ProjectData/caltech101/101_ObjectCategories/'
 typeofimage = 'Faces_easy/'
 fl = dir([imgPath typeofimage]);
 %%
-% Matrix created here
-% Y
 Y = [];
 reduceTo = 128;
 patchsize = 8;
@@ -37,7 +35,6 @@ for imindex = 3:gap:(3 + gap*totalImages - 1)
     pause(0.3)
 end
 Y = Y./255;
-Y = gpuArray(Y);
 clearvars r s drop
 %%
 figure(1)

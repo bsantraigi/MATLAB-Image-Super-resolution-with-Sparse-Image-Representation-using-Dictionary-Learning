@@ -1,55 +1,14 @@
 %% Actual Code
 clear all
 close all
-imgPath = 'D:/ProjectData/caltech101/101_ObjectCategories/'
-typeofimage = 'Faces_easy/'
-fl = dir([imgPath typeofimage]);
-%%
-% Matrix created here
-% Y
-Y = [];
-reduceTo = 128;
-patchsize = 8;
-column = 1;
-totalImages = 2;
-gap = 7;
-for imindex = 3:gap:(3 + gap*totalImages - 1)    
-    imgTemp = imread([imgPath typeofimage fl(imindex).name]);
-    if size(imgTemp, 3) > 1
-        imgTemp = rgb2gray(imgTemp);
-    end
-    imgTemp = imresize(imgTemp, reduceTo/min(size(imgTemp)));
-    if size(imgTemp, 1) > reduceTo
-        r = size(imgTemp, 1);
-        drop = floor((r - reduceTo)/2);
-        s = max(1, 1+drop - 1);
-        imgTemp = imgTemp(s:(s+reduceTo-1),:);
-    elseif size(imgTemp, 2) > reduceTo
-        r = size(imgTemp, 2);
-        drop = floor((r - reduceTo)/2);
-        s = max(1, 1+drop - 1);
-        imgTemp = imgTemp(:,s:(s+reduceTo-1));
-    end
-    Y = [Y im2patch(imgTemp, patchsize)];
-    size(imgTemp)
-    imshow(imgTemp)
-    drawnow
-    pause(0.3)
-end
-Y = Y./255;
-Y = gpuArray(Y);
-clearvars r s drop
-%%
-figure(1)
-clf
-ii = 2;
-step = size(Y,2)/totalImages;
-recon = patch2im(Y(:,(1 + (ii-1)*step):(ii*step)), patchsize);
-% recon = reshape(D(:, 23), reduceTo, reduceTo);
-imshow(recon)
+user = 1;
+sData = load(sprintf('EEG_Kaggle/user%d_Dictionaries_set1', user));
+Y = LoadEEG_TestData(user);
+% Y = LoadEEG_TrainData(1, 1, 2000, 'interictal');
+imagesc(Y);
 %% Initialize
-K1 = 80;
-K2 = 80;
+K1 = 60;
+K2 = 60;
 
 Alpha1 = {};
 Beta1 = {};
@@ -66,19 +25,19 @@ Beta1.n = 1e-3;
 
 % Params for beta distro : Near to zero, sparse
 Alpha1.pi = 1;
-Beta1.pi = 800;
+Beta1.pi = 2500;
 
 Alpha2 = Alpha1;
 Beta2 = Beta1;
 
 Alpha2.pi = 1;
-Beta2.pi = 2000;
-
-tic
-[ D, S, B, PI, post_PI, bias, Gamma, c ] = InitAll( Y, K1, Alpha1, Beta1 );
-toc
+Beta2.pi = 2500;
+D = sData.D;
+D2 = sData.D2;
+[ ~, S, B, PI, post_PI, bias, Gamma, c ] = InitAll( Y, K1, Alpha1, Beta1 );
 Y2 = sigmoid_Inv(post_PI);
-[ D2, S2, B2, PI2, post_PI2, bias2, Gamma2, c2 ] = InitAll( Y2, K2, Alpha2, Beta2 );
+[ ~, S2, B2, PI2, post_PI2, bias2, Gamma2, c2 ] = InitAll( Y2, K2, Alpha2, Beta2 );
+
 %% Gibbs
 figure(2)
 clf
@@ -87,48 +46,44 @@ tune_length = 10;
 round_1 = tune_length;
 round_2 = round_1 + tune_length;
 
-mse_array = zeros(2000, 1);
 for gr = 1:2000
     % Test here only
     Y_approx = D*(S.*B) + repmat(bias, 1, c.N);
-    er = (sum((Y_approx(:) - Y(:)).^2))/c.N
-    mse_array(gr) = er;
-    l = (reduceTo - patchsize + 1)^2;
-    for r = 0:l:0
-        subplot(3, 2, 1)
-        imshow(patch2im(Y(:,(r+1):(r+l)), patchsize))
-        title('Actual')        
-        
-        subplot(3, 2, 2)
-        recon = patch2im(Y_approx(:,(r+1):(r+l)), patchsize);
-        imshow(recon)
-        title('Recon')
-        
-        subplot(3, 2, 3)
-        imagesc(B)
-        title('B Matrix')
-        
-        subplot(3, 2, 4)
-        imagesc(Y2)
-        title('Y2')
-    end
+    
+    subplot(3, 2, 1)
+    imagesc(Y_approx)
+    title('Recon1')
+
+    subplot(3, 2, 2)
+    imagesc(Y)
+    title('Actual1')
+    
+    subplot(3, 2, 3)
+    imagesc(B)
+    title('B Matrix')
+
+    subplot(3, 2, 4)
+    imagesc(S.*B)
+    title('S.*B')
+    
     subplot(3,2,5)
     imagesc(B2)
     title('Layer2 B2')
+    
     subplot(3,2,6)
-    imagesc(post_PI2)
-    title('Post PI2')
+    imagesc(S2.*B2)
+    title('S2.*B2')
     drawnow
     
     tic
-    if mod(floor(gr/10), 2) == 0 || true
+    if mod(floor(gr/20), 2) == 0
         % LEarn layer 1
-        [ D, S, B, PI, post_PI, bias, Gamma] = GibbsLevel( Y, D, S, B, PI, post_PI, bias, Gamma, Alpha1, Beta1, c );
-        %Y2 = sigmoid_Inv(post_PI);
+        [ ~, S, B, PI, post_PI, bias, Gamma] = GibbsLevel( Y, D, S, B, PI, post_PI, bias, Gamma, Alpha1, Beta1, c, 0 );
+        Y2 = sigmoid_Inv(post_PI);
         fprintf('[V1_L1]Iteration: %d \n', gr)
     else
         %Learn Layer 2
-%         [D2, S2, B2, PI2, post_PI2, bias2, Gamma2] = GibbsLevel( Y2, D2, S2, B2, PI2, post_PI2, bias2, Gamma2, Alpha2, Beta2, c2 );
+        [~, S2, B2, PI2, post_PI2, bias2, Gamma2] = GibbsLevel( Y2, D2, S2, B2, PI2, post_PI2, bias2, Gamma2, Alpha2, Beta2, c2, 0 );
         fprintf('[V1_L2]Iteration: %d \n', gr)
     end
 %         % Learn Both
@@ -137,7 +92,7 @@ for gr = 1:2000
 %         [D2, S2, B2, PI2, post_PI2, bias2, Gamma2] = GibbsLevel( Y2, D2, S2, B2, PI2, post_PI2, bias2, Gamma2, Alpha2, Beta2, c2 );
 %     end
     
-    save('WSs/runtime_backup_extend_16p', '-v7.3');
+%     save('WSs/runtime_backup_extend_16p', '-v7.3');
     % Checkpoint for B - Layer 1
     if mod(gr, 2) == 0
         if sum(sum(B == 0)) == c.N*K1
@@ -157,46 +112,32 @@ for gr = 1:2000
     toc
     
     fprintf('Noise Var: L1 -> %3.4f, L2 -> %3.4f\n', 1/Gamma.n, 1/Gamma2.n)
-
+%     if(1/Gamma2.n < 0.1)
+%         break
+%     end
 end
 fprintf('Gibbs Complete...\n')
+%% Save S.*B for test matrix
+fprintf('Save to -> EEG_Kaggle/test_data_user%d\n', user);
+save(sprintf('EEG_Kaggle/test_data_user%d', user), '-v7.3')
 %% Plot reconstructed Image
 figure(2)
 clf
 Y_approx = D*(S.*B) + repmat(bias, 1, c.N);
 l = (reduceTo - patchsize + 1)^2;
-for r = 0:l:(c.N - 1)
+for r = 0:l:2500
     subplot(1, 2, 1)
     recon = patch2im(Y_approx(:,(r+1):(r+l)), patchsize);
     recon(recon<=0) = 0;
-    recon(recon>=1) = 1;   
-    
-    imshow(recon)    
+    recon(recon>=1) = 1;
+    imshow(recon)
     title('Recon')
     subplot(1, 2, 2)
-    actual = patch2im(Y(:,(r+1):(r+l)), patchsize);
-    
-%     cl = clock;
-%     suffix = sprintf('%d%d%d%d', cl(3), cl(4), cl(5), floor(10*cl(6)));
-%     imwrite(recon, sprintf('outputs_nov/recon_%s.png', suffix));
-%     imwrite(actual, sprintf('outputs_nov/actual_%s.png', suffix));
-    
-    imshow(actual)
+    imshow(patch2im(Y(:,(r+1):(r+l)), patchsize))
     title('Actual')
     drawnow
-    pause(1)
+    pause(0.3)
 end
-%% Plot Mse
-figure(1)
-clf
-plot(mse_array(1:gr))
-axis([1 gr 0 1.5])
-xlabel('Iteration')
-ylabel('MSE')
-title('MSE in approximation as a function of Gibbs Iteration')
-dim = [.2 0.3 .3 0];
-str = 'For training of 128 x 128 images, 8 x 8 patchsize';
-annotation('textbox',dim,'String',str,'FitBoxToText','on');
 %% Plot reconstructed Image 2
 figure(2)
 clf
@@ -252,10 +193,6 @@ for i = 1:length(list_of_f)
     imshow(recon)
     title(sprintf('Feature %d', active_f))
     
-%     cl = clock;
-%     suffix = sprintf('%d%d%d%d', cl(3), cl(4), cl(5), floor(10*cl(6)));
-%     imwrite(recon, sprintf('outputs_nov/feat_%d.png', active_f));
-    
     if totalImages > 1
         subplot(gridsize, gridsize, sb + 1)
         recon = normalize(patch2im(Y_approx(:,(l + 1):2*l), patchsize));
@@ -307,14 +244,11 @@ clf
 % Best Features same location
 [~, list_of_f] = sort(sum(B,2));
 list_of_f = list_of_f(end:-1:(end - 24));
-for i = 1:8
+for i = 1:25
     subplot(5,5,i)
     j = list_of_f(i);
     imshow(reshape(D(:, j), patchsize, patchsize))
     imagesc(reshape(D(:, j), patchsize, patchsize)); colormap;
-    
-    imwrite(normalize(reshape(D(:, j), patchsize, patchsize)), sprintf('outputs_nov/patch_%d.png', j));
-    
     title(sprintf('Feature %d', j))
 end
 figure(6)
