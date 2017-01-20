@@ -5,16 +5,23 @@ function [ B, post_PI ] = sampleB( Y, D, S, B, PI, post_PI, bias, Gamma, c )
 M = c.M;
 N = c.N;
 K = c.K;
-SB = S.*B;
-for i = 1:N
-    for k = 1:K
+
+for k = 1:K
+    SB = S.*B;    
+%     dtDelY = D(:, k)'*...
+%         (Y - repmat(bias, 1, N) - D(:, [1:(k - 1),(k + 1):K])*SB([1:(k - 1),(k + 1):K], :));
+    dtDelY = D(:, k)'*...
+        (Y - repmat(bias, 1, N) - D(:, [1:(k - 1),(k + 1):K])*SB([1:(k - 1),(k + 1):K], :));
+    dTd_k = (D(:, k)'*D(:, k));
+    pi_k = PI(k);
+    gam_n = Gamma.n;
+    parfor i = 1:N
         B(k, i) = 1;
-        delY = Y(:, i) - bias - D(:, [1:(k - 1),(k + 1):K])*SB([1:(k - 1),(k + 1):K], i);
-        arg = S(k, i).^2.*(D(:, k)'*D(:, k)) - 2*S(k, i).*D(:, k)'*delY;
-        p1 = PI(k) * exp(-Gamma.n*arg/2);
-        
+%         delY_i = Y(:, i) - bias - D(:, [1:(k - 1),(k + 1):K])*SB([1:(k - 1),(k + 1):K], i);
+        arg = S(k, i).^2.*dTd_k - 2*S(k, i)*dtDelY(i);
+        p1 = pi_k * exp(-gam_n*arg/2);
         B(k, i) = 0;
-        p0 = (1 - PI(k));
+        p0 = (1 - pi_k);
         if isinf(p1)
             pp = 1;
             B(k, i) = 1;
@@ -26,7 +33,8 @@ for i = 1:N
 %                 fprintf('NaN Ocurred %d, %d: p0: %f, p1: %f, arg: %f\n', k, i, p0, p1, arg)
 %             end
         end
-        post_PI(k, i) = pp;
+        
+        post_PI(k, i) = pp;        
     end
 end
 

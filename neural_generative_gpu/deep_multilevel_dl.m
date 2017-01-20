@@ -5,8 +5,10 @@ imgPath = 'D:/ProjectData/caltech101/101_ObjectCategories/'
 typeofimage = 'Faces_easy/'
 fl = dir([imgPath typeofimage]);
 %%
+% Matrix created here
+% Y
 Y = [];
-reduceTo = 128;
+reduceTo = 64;
 patchsize = 8;
 column = 1;
 totalImages = 2;
@@ -35,6 +37,7 @@ for imindex = 3:gap:(3 + gap*totalImages - 1)
     pause(0.3)
 end
 Y = Y./255;
+Y = gpuArray(Y);
 clearvars r s drop
 %%
 figure(1)
@@ -74,8 +77,11 @@ Beta2.pi = 2000;
 tic
 [ D, S, B, PI, post_PI, bias, Gamma, c ] = InitAll( Y, K1, Alpha1, Beta1 );
 toc
-Y2 = sigmoid_Inv(post_PI);
-[ D2, S2, B2, PI2, post_PI2, bias2, Gamma2, c2 ] = InitAll( Y2, K2, Alpha2, Beta2 );
+layer2 = false;
+if(layer2)
+    Y2 = sigmoid_Inv(post_PI);
+    [ D2, S2, B2, PI2, post_PI2, bias2, Gamma2, c2 ] = InitAll( Y2, K2, Alpha2, Beta2 );
+end
 %% Gibbs
 figure(2)
 clf
@@ -84,7 +90,7 @@ tune_length = 10;
 round_1 = tune_length;
 round_2 = round_1 + tune_length;
 
-mse_array = zeros(2000, 1);
+mse_array = gpuArray(zeros(2000, 1));
 for gr = 1:2000
     % Test here only
     Y_approx = D*(S.*B) + repmat(bias, 1, c.N);
@@ -105,17 +111,21 @@ for gr = 1:2000
         imagesc(B)
         title('B Matrix')
         
-        subplot(3, 2, 4)
-        imagesc(Y2)
-        title('Y2')
+        if(layer2)
+            subplot(3, 2, 4)
+            imagesc(Y2)
+            title('Y2')
+        end
     end
-    subplot(3,2,5)
-    imagesc(B2)
-    title('Layer2 B2')
-    subplot(3,2,6)
-    imagesc(post_PI2)
-    title('Post PI2')
-    drawnow
+    if layer2
+        subplot(3,2,5)
+        imagesc(B2)
+        title('Layer2 B2')
+        subplot(3,2,6)
+        imagesc(post_PI2)
+        title('Post PI2')
+        drawnow
+    end
     
     tic
     if mod(floor(gr/10), 2) == 0 || true
@@ -126,7 +136,7 @@ for gr = 1:2000
     else
         %Learn Layer 2
 %         [D2, S2, B2, PI2, post_PI2, bias2, Gamma2] = GibbsLevel( Y2, D2, S2, B2, PI2, post_PI2, bias2, Gamma2, Alpha2, Beta2, c2 );
-        fprintf('[V1_L2]Iteration: %d \n', gr)
+%         fprintf('[V1_L2]Iteration: %d \n', gr)
     end
 %         % Learn Both
 %         [ D, S, B, PI, post_PI, bias, Gamma] = GibbsLevel( Y, D, S, B, PI, post_PI, bias, Gamma, Alpha1, Beta1, c );
@@ -144,7 +154,7 @@ for gr = 1:2000
     end
     
     % Checkpoint for B - Layer 2
-    if mod(gr, 5) == 0
+    if mod(gr, 5) == 0 && layer2
         if sum(sum(B2 == 0)) == c.N*K2
             display('Resetting B2')
             [ ~, ~, B2, ~, ~, ~, ~, ~ ] = InitAll( Y2, K2, Alpha2, Beta2 );
@@ -153,7 +163,11 @@ for gr = 1:2000
 
     toc
     
-    fprintf('Noise Var: L1 -> %3.4f, L2 -> %3.4f\n', 1/Gamma.n, 1/Gamma2.n)
+    if layer2
+        fprintf('Noise Var: L1 -> %3.4f, L2 -> %3.4f\n', 1/Gamma.n, 1/Gamma2.n)
+    else
+        fprintf('Noise Var: L1 -> %3.4f\n', 1/Gamma.n)
+    end
 
 end
 fprintf('Gibbs Complete...\n')
