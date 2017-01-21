@@ -8,7 +8,7 @@ fl = dir([imgPath typeofimage]);
 % Matrix created here
 % Y
 Y = [];
-reduceTo = 64;
+reduceTo = 128;
 patchsize = 8;
 column = 1;
 totalImages = 2;
@@ -47,7 +47,7 @@ recon = patch2im(Y(:,(1 + (ii-1)*step):(ii*step)), patchsize);
 % recon = reshape(D(:, 23), reduceTo, reduceTo);
 imshow(recon)
 %% Initialize
-K1 = 80;
+K1 = 100;
 K2 = 80;
 
 Alpha1 = {};
@@ -60,12 +60,12 @@ Alpha1.s = 1e-1;
 Beta1.s = 1e-1;
 Alpha1.bias = 1e-1;
 Beta1.bias = 1e-1;
-Alpha1.n = 1e-3;
-Beta1.n = 1e-3;
+Alpha1.n = 1e-2;
+Beta1.n = 1e-2;
 
 % Params for beta distro : Near to zero, sparse
 Alpha1.pi = 1;
-Beta1.pi = 800;
+Beta1.pi = 600;
 
 Alpha2 = Alpha1;
 Beta2 = Beta1;
