@@ -119,7 +119,7 @@ fprintf('CPU time: %f ms\n', t*1000);
 
 d_A = gpuArray(A);
 tic
-[~, ~, ~] = svd(A);
+[~, ~, ~] = svd(d_A);
 t = toc;
 fprintf('GPU time: %f ms\n', t*1000);
 

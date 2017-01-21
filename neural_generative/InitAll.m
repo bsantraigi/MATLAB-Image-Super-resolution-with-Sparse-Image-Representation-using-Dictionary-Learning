@@ -22,30 +22,36 @@ Gamma.s = gamrnd(Alpha.s, 1/Beta.s);
 Gamma.n = gamrnd(Alpha.n, 1/Beta.n);
 Gamma.bias = gamrnd(Alpha.bias, 1/Beta.bias);
 
+%% Sampling of D
 zmu = zeros(M, 1);
 Is = eye(M);
-for k = 1:K
-    D(:, k) = mvnrnd(zmu, (1/Gamma.d).*Is);
+gmd = Gamma.d;
+parfor k = 1:K
+    D(:, k) = mvnrnd(zmu, (1/gmd).*Is);
 end
 
+%% Sampling of S
 zmu = zeros(K, 1);
 Is = eye(K);
-for i = 1:N
-    S(:, i) = mvnrnd(zmu, (1/Gamma.s).*Is);
+gms = Gamma.s;
+parfor i = 1:N
+    S(:, i) = mvnrnd(zmu, (1/gms).*Is);
 end
 
+%% Sampling of bias
 bias = mvnrnd(zeros(M,1), (1/Gamma.bias)*eye(M))';
 
-% for i = 1:N
-%     PI(i) = betarnd(Alpha.pi, Beta.pi);
-% end
-for k = 1:K
-    PI(k) = betarnd(Alpha.pi, Beta.pi);
+%% Sampling of PI and B (or Z)
+alpha_pi = Alpha.pi;
+beta_pi = Beta.pi;
+parfor k = 1:K %% VERIFIED - parfor is BETTER
+    PI(k) = betarnd(alpha_pi, beta_pi);
     for i = 1:N
         B(k, i) = binornd(1, PI(k));
     end
 end
 
+%% Sampling of post_PI
 post_PI = repmat(PI, 1, N);
 
 fprintf('Initial Samples Ready...\n')

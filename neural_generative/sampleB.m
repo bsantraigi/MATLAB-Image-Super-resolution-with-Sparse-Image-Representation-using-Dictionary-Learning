@@ -14,14 +14,16 @@ for k = 1:K
         (Y - repmat(bias, 1, N) - D(:, [1:(k - 1),(k + 1):K])*SB([1:(k - 1),(k + 1):K], :));
     dTd_k = (D(:, k)'*D(:, k));
     pi_k = PI(k);
+    p0 = (1 - pi_k);
     gam_n = Gamma.n;
+    
     parfor i = 1:N
         B(k, i) = 1;
 %         delY_i = Y(:, i) - bias - D(:, [1:(k - 1),(k + 1):K])*SB([1:(k - 1),(k + 1):K], i);
         arg = S(k, i).^2.*dTd_k - 2*S(k, i)*dtDelY(i);
         p1 = pi_k * exp(-gam_n*arg/2);
         B(k, i) = 0;
-        p0 = (1 - pi_k);
+        
         if isinf(p1)
             pp = 1;
             B(k, i) = 1;
