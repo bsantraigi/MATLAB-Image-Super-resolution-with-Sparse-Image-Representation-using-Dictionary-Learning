@@ -47,6 +47,10 @@ recon = patch2im(Y(:,(1 + (ii-1)*step):(ii*step)), patchsize);
 % recon = reshape(D(:, 23), reduceTo, reduceTo);
 imshow(recon)
 %% Initialize
+
+% Whether training layer 2
+layer2 = false;
+
 K1 = 100;
 K2 = 80;
 
@@ -65,7 +69,7 @@ Beta1.n = 1e-2;
 
 % Params for beta distro : Near to zero, sparse
 Alpha1.pi = 1;
-Beta1.pi = 600;
+Beta1.pi = 700;
 
 Alpha2 = Alpha1;
 Beta2 = Beta1;
@@ -76,7 +80,7 @@ Beta2.pi = 2000;
 tic
 [ D, S, B, PI, post_PI, bias, Gamma, c ] = InitAll( Y, K1, Alpha1, Beta1 );
 toc
-layer2 = false;
+
 if(layer2)
     Y2 = sigmoid_Inv(post_PI);
     [ D2, S2, B2, PI2, post_PI2, bias2, Gamma2, c2 ] = InitAll( Y2, K2, Alpha2, Beta2 );
