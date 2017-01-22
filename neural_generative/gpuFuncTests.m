@@ -130,10 +130,12 @@ N = cell(4, 1);
 for i = 1:4
     N{i} = randi(10, 4, 1);
 end
-N_mat = zeros(4, 4);
-for i = 1:4
-    
-end
+
 f = @(v) TestUnitF(M, v);
 out = arrayfun(f, N, 'UniformOutput', false)
+
+%% Sigmoid inverse
+tic
+Y2 = sigmoid_Inv(post_PI);
+toc
 

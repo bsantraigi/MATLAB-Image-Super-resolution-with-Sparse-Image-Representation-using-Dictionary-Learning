@@ -2,13 +2,15 @@ function [ out ] = TestUnitF()
 %TESTUNITF Summary of this function goes here
 %   Detailed explanation goes here
 
-A = ones(10, 10);
-    function [out] = inner(i)
-        disp(i)
+A = gpuArray(ones(10, 10));
+    function [out] = inner(i, j)
+        out = i
+        out = j
         A(:, i) = A(:, i) + i;
     end
-r = 1:10;
-arrayfun(@inner, r);
-A;
+rc = 1:10;
+r = gpuArray(rc);
+arrayfun(@inner, rc, r);
+A
 end
 

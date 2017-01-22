@@ -2,7 +2,7 @@ function [ D, S, B, PI, post_PI, bias, Gamma ] = GibbsLevel( Y, D, S, B, PI, pos
 %GIBBSLEVEL Summary of this function goes here
 %   Detailed explanation goes here
 
-showTime = true;
+showTime = false;
 %% SamplePI
 if showTime
     tic

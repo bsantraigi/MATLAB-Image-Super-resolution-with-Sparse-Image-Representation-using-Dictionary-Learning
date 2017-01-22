@@ -8,10 +8,10 @@ fl = dir([imgPath typeofimage]);
 % Matrix created here
 % Y
 Y = [];
-reduceTo = 128;
-patchsize = 8;
+reduceTo = 64;
+patchsize = 4;
 column = 1;
-totalImages = 2;
+totalImages = 8;
 gap = 7;
 for imindex = 3:gap:(3 + gap*totalImages - 1)    
     imgTemp = imread([imgPath typeofimage fl(imindex).name]);
@@ -49,15 +49,15 @@ imshow(recon)
 %% Initialize
 
 % Whether training layer 2
-layer2 = false;
+layer2 = true;
 
 K1 = 100;
-K2 = 80;
+K2 = 100;
 
 Alpha1 = {};
 Beta1 = {};
 
-% Params for gamma distro
+% Params for gamma distro - LAYER 1
 Alpha1.d = 1e-1;
 Beta1.d = 1e-1;
 Alpha1.s = 1e-1;
@@ -71,19 +71,24 @@ Beta1.n = 1e-2;
 Alpha1.pi = 1;
 Beta1.pi = 700;
 
+% LAYER 2 Settings
 Alpha2 = Alpha1;
 Beta2 = Beta1;
 
 Alpha2.pi = 1;
-Beta2.pi = 2000;
+Beta2.pi = 700;
+Alpha1.n = 1e-3;
+Beta1.n = 1e-3;
 
 tic
 [ D, S, B, PI, post_PI, bias, Gamma, c ] = InitAll( Y, K1, Alpha1, Beta1 );
 toc
 
 if(layer2)
+    tic
     Y2 = sigmoid_Inv(post_PI);
     [ D2, S2, B2, PI2, post_PI2, bias2, Gamma2, c2 ] = InitAll( Y2, K2, Alpha2, Beta2 );
+    toc
 end
 %% Gibbs
 figure(2)
@@ -93,7 +98,7 @@ tune_length = 10;
 round_1 = tune_length;
 round_2 = round_1 + tune_length;
 
-mse_array = gpuArray(zeros(2000, 1));
+mse_array = zeros(2000, 1);
 for gr = 1:2000
     % Test here only
     Y_approx = D*(S.*B) + repmat(bias, 1, c.N);
@@ -130,15 +135,16 @@ for gr = 1:2000
     drawnow
     
     tic
-    if mod(floor(gr/10), 2) == 0 || true
+%     if mod(floor(gr/10), 2) == 0
+    if ~layer2
         % LEarn layer 1
-        [ D, S, B, PI, post_PI, bias, Gamma] = GibbsLevel( Y, D, S, B, PI, post_PI, bias, Gamma, Alpha1, Beta1, c );
-        %Y2 = sigmoid_Inv(post_PI);
+        [ D, S, B, PI, post_PI, bias, Gamma] = GibbsLevel( Y, D, S, B, PI, post_PI, bias, Gamma, Alpha1, Beta1, c );        
         fprintf('[V1_L1]Iteration: %d \n', gr)
+        Y2 = sigmoid_Inv(post_PI);
     else
         %Learn Layer 2
-%         [D2, S2, B2, PI2, post_PI2, bias2, Gamma2] = GibbsLevel( Y2, D2, S2, B2, PI2, post_PI2, bias2, Gamma2, Alpha2, Beta2, c2 );
-%         fprintf('[V1_L2]Iteration: %d \n', gr)
+        [D2, S2, B2, PI2, post_PI2, bias2, Gamma2] = GibbsLevel( Y2, D2, S2, B2, PI2, post_PI2, bias2, Gamma2, Alpha2, Beta2, c2 );
+        fprintf('[V1_L2]Iteration: %d \n', gr)
     end
 %         % Learn Both
 %         [ D, S, B, PI, post_PI, bias, Gamma] = GibbsLevel( Y, D, S, B, PI, post_PI, bias, Gamma, Alpha1, Beta1, c );
@@ -146,7 +152,7 @@ for gr = 1:2000
 %         [D2, S2, B2, PI2, post_PI2, bias2, Gamma2] = GibbsLevel( Y2, D2, S2, B2, PI2, post_PI2, bias2, Gamma2, Alpha2, Beta2, c2 );
 %     end
     
-    save('WSs/runtime_backup_extend_16p', '-v7.3');
+    % save('WSs/runtime_backup_extend_16p', '-v7.3');
     % Checkpoint for B - Layer 1
     if mod(gr, 2) == 0
         if sum(sum(B == 0)) == c.N*K1
