@@ -3,41 +3,13 @@ clear all
 close all
 imgPath = 'D:/ProjectData/caltech101/101_ObjectCategories/'
 typeofimage = 'Faces_easy/'
-fl = dir([imgPath typeofimage]);
 %%
 % Matrix created here
-% Y
-Y = [];
 reduceTo = 64;
-patchsize = 4;
+patchsize = 8;
 column = 1;
-totalImages = 8;
-gap = 7;
-for imindex = 3:gap:(3 + gap*totalImages - 1)    
-    imgTemp = imread([imgPath typeofimage fl(imindex).name]);
-    if size(imgTemp, 3) > 1
-        imgTemp = rgb2gray(imgTemp);
-    end
-    imgTemp = imresize(imgTemp, reduceTo/min(size(imgTemp)));
-    if size(imgTemp, 1) > reduceTo
-        r = size(imgTemp, 1);
-        drop = floor((r - reduceTo)/2);
-        s = max(1, 1+drop - 1);
-        imgTemp = imgTemp(s:(s+reduceTo-1),:);
-    elseif size(imgTemp, 2) > reduceTo
-        r = size(imgTemp, 2);
-        drop = floor((r - reduceTo)/2);
-        s = max(1, 1+drop - 1);
-        imgTemp = imgTemp(:,s:(s+reduceTo-1));
-    end
-    Y = [Y im2patch(imgTemp, patchsize)];
-    size(imgTemp)
-    imshow(imgTemp)
-    drawnow
-    pause(0.3)
-end
-Y = Y./255;
-clearvars r s drop
+totalImages = 15;
+Y = GetDataMatrix([imgPath typeofimage], reduceTo, patchsize, totalImages);
 %%
 figure(1)
 clf
@@ -46,13 +18,9 @@ step = size(Y,2)/totalImages;
 recon = patch2im(Y(:,(1 + (ii-1)*step):(ii*step)), patchsize);
 % recon = reshape(D(:, 23), reduceTo, reduceTo);
 imshow(recon)
-%% Initialize
+%% Initialize Layer 1
 
-% Whether training layer 2
-layer2 = true;
-
-K1 = 100;
-K2 = 100;
+K1 = 80;
 
 Alpha1 = {};
 Beta1 = {};
@@ -69,24 +37,35 @@ Beta1.n = 1e-2;
 
 % Params for beta distro : Near to zero, sparse
 Alpha1.pi = 1;
-Beta1.pi = 700;
+Beta1.pi = 800;
+
+tic
+[ D, S, B, PI, post_PI, bias, Gamma, c ] = InitAll( Y, K1, Alpha1, Beta1 );
+toc
+%% Initialize Layer 2
+
+% Whether training layer 2
+layer2 = true;
+reStructure = false;
+
+K2 = 80;
 
 % LAYER 2 Settings
 Alpha2 = Alpha1;
 Beta2 = Beta1;
 
 Alpha2.pi = 1;
-Beta2.pi = 700;
+Beta2.pi = 900;
 Alpha1.n = 1e-3;
 Beta1.n = 1e-3;
-
-tic
-[ D, S, B, PI, post_PI, bias, Gamma, c ] = InitAll( Y, K1, Alpha1, Beta1 );
-toc
 
 if(layer2)
     tic
     Y2 = sigmoid_Inv(post_PI);
+%     Y2 = S.*post_PI;
+    if reStructure
+        Y2 = repatch(Y2, reduceTo, patchsize, K1, totalImages);
+    end
     [ D2, S2, B2, PI2, post_PI2, bias2, Gamma2, c2 ] = InitAll( Y2, K2, Alpha2, Beta2 );
     toc
 end
@@ -102,8 +81,19 @@ mse_array = zeros(2000, 1);
 for gr = 1:2000
     % Test here only
     Y_approx = D*(S.*B) + repmat(bias, 1, c.N);
-    er = (sum((Y_approx(:) - Y(:)).^2))/c.N
-    mse_array(gr) = er;
+    if ~layer2
+        er = (sum((Y_approx(:) - Y(:)).^2))/c.N;
+        fprintf('-----------\n');
+        fprintf('MSE: %6.3f\n', er);
+        mse_array(gr) = er;
+    else
+        er = (sum((Y_approx(:) - Y(:)).^2))/c.N;
+        Y2_approx = D2*(S2.*B2) + repmat(bias2, 1, c2.N);
+        er2 = (sum((Y2_approx(:) - Y2(:)).^2))/c2.N;
+        fprintf('-----------\n');
+        fprintf('MSE@1: %6.3f\n', er);
+        fprintf('MSE@2: %6.3f\n', er2);
+    end
     l = (reduceTo - patchsize + 1)^2;
     
     r = 0;
@@ -135,16 +125,21 @@ for gr = 1:2000
     drawnow
     
     tic
-%     if mod(floor(gr/10), 2) == 0
-    if ~layer2
+    if mod(gr, 2) == 1
+%     if ~layer2
         % LEarn layer 1
         [ D, S, B, PI, post_PI, bias, Gamma] = GibbsLevel( Y, D, S, B, PI, post_PI, bias, Gamma, Alpha1, Beta1, c );        
-        fprintf('[V1_L1]Iteration: %d \n', gr)
-        Y2 = sigmoid_Inv(post_PI);
+        fprintf('[V1_L1]Iteration Complete: %d \n', gr)
+        if layer2
+            Y2 = sigmoid_Inv(post_PI);
+            if reStructure
+                Y2 = repatch(Y2, reduceTo, patchsize, K1, totalImages);
+            end
+        end
     else
         %Learn Layer 2
         [D2, S2, B2, PI2, post_PI2, bias2, Gamma2] = GibbsLevel( Y2, D2, S2, B2, PI2, post_PI2, bias2, Gamma2, Alpha2, Beta2, c2 );
-        fprintf('[V1_L2]Iteration: %d \n', gr)
+        fprintf('[V1_L2]Iteration Complete: %d \n', gr)
     end
 %         % Learn Both
 %         [ D, S, B, PI, post_PI, bias, Gamma] = GibbsLevel( Y, D, S, B, PI, post_PI, bias, Gamma, Alpha1, Beta1, c );
