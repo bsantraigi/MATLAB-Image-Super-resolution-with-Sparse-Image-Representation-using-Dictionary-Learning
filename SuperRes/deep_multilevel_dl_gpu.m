@@ -2,14 +2,40 @@
 clear all
 close all
 imgPath = 'D:/ProjectData/caltech101/101_ObjectCategories/'
-typeofimage = 'mixed/'
+typeofimage = 'Faces_easy/'
+fl = dir([imgPath typeofimage]);
 %%
-% Matrix created here
-reduceTo = 64;
-patchsize = 16;
+Y = [];
+reduceTo = 128;
+patchsize = 8;
 column = 1;
-totalImages = 12;
-Y = GetDataMatrix([imgPath typeofimage], reduceTo, patchsize, totalImages);
+totalImages = 2;
+gap = 7;
+for imindex = 3:gap:(3 + gap*totalImages - 1)    
+    imgTemp = imread([imgPath typeofimage fl(imindex).name]);
+    if size(imgTemp, 3) > 1
+        imgTemp = rgb2gray(imgTemp);
+    end
+    imgTemp = imresize(imgTemp, reduceTo/min(size(imgTemp)));
+    if size(imgTemp, 1) > reduceTo
+        r = size(imgTemp, 1);
+        drop = floor((r - reduceTo)/2);
+        s = max(1, 1+drop - 1);
+        imgTemp = imgTemp(s:(s+reduceTo-1),:);
+    elseif size(imgTemp, 2) > reduceTo
+        r = size(imgTemp, 2);
+        drop = floor((r - reduceTo)/2);
+        s = max(1, 1+drop - 1);
+        imgTemp = imgTemp(:,s:(s+reduceTo-1));
+    end
+    Y = [Y im2patch(imgTemp, patchsize)];
+    size(imgTemp)
+    imshow(imgTemp)
+    drawnow
+    pause(0.3)
+end
+Y = Y./255;
+clearvars r s drop
 %%
 figure(1)
 clf
@@ -18,62 +44,38 @@ step = size(Y,2)/totalImages;
 recon = patch2im(Y(:,(1 + (ii-1)*step):(ii*step)), patchsize);
 % recon = reshape(D(:, 23), reduceTo, reduceTo);
 imshow(recon)
-%% Initialize Layer 1
-
-K1 = 200;
+%% Initialize
+K1 = 80;
+K2 = 80;
 
 Alpha1 = {};
 Beta1 = {};
 
-% Params for gamma distro - LAYER 1
+% Params for gamma distro
 Alpha1.d = 1e-1;
 Beta1.d = 1e-1;
 Alpha1.s = 1e-1;
 Beta1.s = 1e-1;
 Alpha1.bias = 1e-1;
 Beta1.bias = 1e-1;
-Alpha1.n = 1e-2;
-Beta1.n = 1e-2;
+Alpha1.n = 1e-3;
+Beta1.n = 1e-3;
 
 % Params for beta distro : Near to zero, sparse
 Alpha1.pi = 1;
-Beta1.pi = 2000;
+Beta1.pi = 800;
+
+Alpha2 = Alpha1;
+Beta2 = Beta1;
+
+Alpha2.pi = 1;
+Beta2.pi = 2000;
 
 tic
 [ D, S, B, PI, post_PI, bias, Gamma, c ] = InitAll( Y, K1, Alpha1, Beta1 );
 toc
-%% Initialize Layer 2
-
-% Whether training layer 2
-layer2 = false;
-reStructure = false;
-
-K2 = 100;
-
-% LAYER 2 Settings
-Alpha2 = Alpha1;
-Beta2 = Beta1;
-
-Alpha2.d = 1e-1;
-Beta2.d = 1e-1;
-Alpha2.s = 1e-1;
-Beta2.s = 1e-1;
-
-Alpha2.pi = 1;
-Beta2.pi = 1200;
-Alpha1.n = 1e-3;
-Beta1.n = 1e-3;
-
-if(layer2)
-    tic
-%     Y2 = sigmoid_Inv(post_PI);
-    Y2 = S.*B;
-    if reStructure
-        Y2 = repatch_v2(Y2, reduceTo, patchsize, K1, totalImages);
-    end
-    [ D2, S2, B2, PI2, post_PI2, bias2, Gamma2, c2 ] = InitAll( Y2, K2, Alpha2, Beta2 );
-    toc
-end
+Y2 = sigmoid_Inv(post_PI);
+[ D2, S2, B2, PI2, post_PI2, bias2, Gamma2, c2 ] = InitAll( Y2, K2, Alpha2, Beta2 );
 %% Gibbs
 figure(2)
 clf
@@ -86,75 +88,45 @@ mse_array = zeros(2000, 1);
 for gr = 1:2000
     % Test here only
     Y_approx = D*(S.*B) + repmat(bias, 1, c.N);
-    if ~layer2
-        er = (sum((Y_approx(:) - Y(:)).^2))/(c.N*c.M);
-        fprintf('-----------\n');
-        fprintf('MSE: %6.3f\n', er);
-        mse_array(gr) = er;
-    else
-        er = (sum((Y_approx(:) - Y(:)).^2))/(c.N*c.M);
-        Y2_approx = D2*(S2.*B2) + repmat(bias2, 1, c2.N);
-        er2 = (sum((Y2_approx(:) - Y2(:)).^2))/(c2.N*c2.M);
-        fprintf('-----------\n');
-        fprintf('MSE@1: %6.3f\n', er);
-        fprintf('MSE@2: %6.3f\n', er2);
-    end
+    er = (sum((Y_approx(:) - Y(:)).^2))/c.N
+    mse_array(gr) = er;
     l = (reduceTo - patchsize + 1)^2;
-    
-    r = 0;
-    subplot(3, 3, 1)
-    imshow(patch2im(Y(:,(r+1):(r+l)), patchsize))
-    title('Actual')        
-
-    subplot(3, 3, 2)
-    recon = patch2im(Y_approx(:,(r+1):(r+l)), patchsize);
-    imshow(recon)
-    title('Recon')
-
-    subplot(3, 3, 3)
-    imagesc(B)
-    title('B Matrix')
-    if(layer2)
-        subplot(3, 3, 4)
+    for r = 0:l:0
+        subplot(3, 2, 1)
+        imshow(patch2im(Y(:,(r+1):(r+l)), patchsize))
+        title('Actual')        
+        
+        subplot(3, 2, 2)
+        recon = patch2im(Y_approx(:,(r+1):(r+l)), patchsize);
+        imshow(recon)
+        title('Recon')
+        
+        subplot(3, 2, 3)
+        imagesc(B)
+        title('B Matrix')
+        
+        subplot(3, 2, 4)
         imagesc(Y2)
         title('Y2')
-        
-        subplot(3,3,5)
-        imagesc(B2)
-        title('Layer2 B2')
-        
-        subplot(3,3,6)
-        imagesc(post_PI2)
-        title('Post PI2')
-        
-        subplot(3,3,7)
-        imagesc(Y2_approx)
-        title('Recon Y2')
-        
-        subplot(3,3,8)
-        imagesc(S2.*B2)
-        title('S2.*B2')
     end
-    
+    subplot(3,2,5)
+    imagesc(B2)
+    title('Layer2 B2')
+    subplot(3,2,6)
+    imagesc(post_PI2)
+    title('Post PI2')
     drawnow
     
     tic
-    
-%     if mod(gr, 2) == 1 || ~layer2
-    if ~layer2
+    if mod(floor(gr/10), 2) == 0 || true
         % LEarn layer 1
-        [ D, S, B, PI, post_PI, bias, Gamma] = GibbsLevel( Y, D, S, B, PI, post_PI, bias, Gamma, Alpha1, Beta1, c );        
-        fprintf('[V1_L1]Iteration Complete: %d \n', gr)
-        if layer2
-            Y2 = sigmoid_Inv(post_PI);
-            if reStructure
-                Y2 = repatch(Y2, reduceTo, patchsize, K1, totalImages);
-            end
-        end
+        [ D, S, B, PI, post_PI, bias, Gamma] = GibbsLevel( Y, D, S, B, PI, post_PI, bias, Gamma, Alpha1, Beta1, c );
+        %Y2 = sigmoid_Inv(post_PI);
+        fprintf('[V1_L1]Iteration: %d \n', gr)
     else
         %Learn Layer 2
-        [D2, S2, B2, PI2, post_PI2, bias2, Gamma2] = GibbsLevel( Y2, D2, S2, B2, PI2, post_PI2, bias2, Gamma2, Alpha2, Beta2, c2 );
-        fprintf('[V1_L2]Iteration Complete: %d \n', gr)
+%         [D2, S2, B2, PI2, post_PI2, bias2, Gamma2] = GibbsLevel( Y2, D2, S2, B2, PI2, post_PI2, bias2, Gamma2, Alpha2, Beta2, c2 );
+        fprintf('[V1_L2]Iteration: %d \n', gr)
     end
 %         % Learn Both
 %         [ D, S, B, PI, post_PI, bias, Gamma] = GibbsLevel( Y, D, S, B, PI, post_PI, bias, Gamma, Alpha1, Beta1, c );
@@ -162,7 +134,7 @@ for gr = 1:2000
 %         [D2, S2, B2, PI2, post_PI2, bias2, Gamma2] = GibbsLevel( Y2, D2, S2, B2, PI2, post_PI2, bias2, Gamma2, Alpha2, Beta2, c2 );
 %     end
     
-    % save('WSs/runtime_backup_extend_16p', '-v7.3');
+    save('WSs/runtime_backup_extend_16p', '-v7.3');
     % Checkpoint for B - Layer 1
     if mod(gr, 2) == 0
         if sum(sum(B == 0)) == c.N*K1
@@ -172,19 +144,16 @@ for gr = 1:2000
     end
     
     % Checkpoint for B - Layer 2
-    if mod(gr, 5) == 0 && layer2
-        if sum(sum(B2 == 0)) == c2.N*K2
+    if mod(gr, 5) == 0
+        if sum(sum(B2 == 0)) == c.N*K2
             display('Resetting B2')
             [ ~, ~, B2, ~, ~, ~, ~, ~ ] = InitAll( Y2, K2, Alpha2, Beta2 );
         end
     end
 
     toc
-    if layer2
-        fprintf('Noise Var: L1 -> %3.4f, L2 -> %3.4f\n', 1/Gamma.n, 1/Gamma2.n)
-    else
-        fprintf('Noise Var: L1 -> %3.4f\n', 1/Gamma.n)
-    end
+    
+    fprintf('Noise Var: L1 -> %3.4f, L2 -> %3.4f\n', 1/Gamma.n, 1/Gamma2.n)
 
 end
 fprintf('Gibbs Complete...\n')
@@ -212,7 +181,7 @@ for r = 0:l:(c.N - 1)
     imshow(actual)
     title('Actual')
     drawnow
-    pause(0.4)
+    pause(1)
 end
 %% Plot Mse
 figure(1)

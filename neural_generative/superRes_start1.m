@@ -1,46 +1,64 @@
-%% Actual Code
-clear all
+clear
+im1 = imread('D:\ProjectData\caltech101\101_ObjectCategories\rhino\image_0001.jpg');
+im1 = double(rgb2gray(im1))/255;
+
+SZ = 64.0;
+im1 = imresize(im1, SZ/255);
+im1 = im1(1:SZ, 1:SZ);
+im2 = upSample_with_noise(im1);
+% im2 = upSample_with_noise(im2);
+figure
+imshow(im1)
+figure
+imshow(im2)
+imwrite(im2, 'D:/ProjectData/caltech101/101_ObjectCategories/super_res_test/rhino_001.png')
+%% (Dictionary) Coefficient learning follows
+%% Load Layer 1
+gcp
+tic
+load('D:\Users\Bishal Santra\Documents\MATLAB\MTP\neural_generative\WSs_10thSem\cat_6_img_12_beta1000.mat')
+toc
+%% Set folder
 close all
 imgPath = 'D:/ProjectData/caltech101/101_ObjectCategories/'
-typeofimage = 'mixed/'
-%%
-% Matrix created here
-reduceTo = 64;
-patchsize = 16;
+typeofimage = 'super_res_test/'
+%% Matrix created here
+reduceTo = SZ*2;
+patchsize = 8;
 column = 1;
-totalImages = 12;
+totalImages = 1;
 Y = GetDataMatrix([imgPath typeofimage], reduceTo, patchsize, totalImages);
-%%
+%% 
 figure(1)
 clf
-ii = 2;
+ii = 1;
 step = size(Y,2)/totalImages;
 recon = patch2im(Y(:,(1 + (ii-1)*step):(ii*step)), patchsize);
 % recon = reshape(D(:, 23), reduceTo, reduceTo);
 imshow(recon)
 %% Initialize Layer 1
 
-K1 = 200;
+% K1 = 200;
 
 Alpha1 = {};
 Beta1 = {};
 
 % Params for gamma distro - LAYER 1
-Alpha1.d = 1e-1;
-Beta1.d = 1e-1;
-Alpha1.s = 1e-1;
-Beta1.s = 1e-1;
-Alpha1.bias = 1e-1;
-Beta1.bias = 1e-1;
-Alpha1.n = 1e-2;
-Beta1.n = 1e-2;
+Alpha1.d = 10;
+Beta1.d = 10;
+Alpha1.s = 10;
+Beta1.s = 10;
+Alpha1.bias = 10;
+Beta1.bias = 10;
+Alpha1.n = 1;
+Beta1.n = 1;
 
 % Params for beta distro : Near to zero, sparse
 Alpha1.pi = 1;
 Beta1.pi = 2000;
 
 tic
-[ D, S, B, PI, post_PI, bias, Gamma, c ] = InitAll( Y, K1, Alpha1, Beta1 );
+[ ~, S, B, PI, post_PI, bias, Gamma, c ] = InitAll( Y, K1, Alpha1, Beta1 );
 toc
 %% Initialize Layer 2
 
@@ -60,7 +78,7 @@ Alpha2.s = 1e-1;
 Beta2.s = 1e-1;
 
 Alpha2.pi = 1;
-Beta2.pi = 1200;
+Beta2.pi = 2000;
 Alpha1.n = 1e-3;
 Beta1.n = 1e-3;
 
@@ -102,16 +120,16 @@ for gr = 1:2000
     l = (reduceTo - patchsize + 1)^2;
     
     r = 0;
-    subplot(3, 3, 1)
+    subplot(2, 2, 1)
     imshow(patch2im(Y(:,(r+1):(r+l)), patchsize))
     title('Actual')        
 
-    subplot(3, 3, 2)
+    subplot(2, 2, 2)
     recon = patch2im(Y_approx(:,(r+1):(r+l)), patchsize);
     imshow(recon)
     title('Recon')
 
-    subplot(3, 3, 3)
+    subplot(2, 2, 3)
     imagesc(B)
     title('B Matrix')
     if(layer2)
@@ -143,7 +161,7 @@ for gr = 1:2000
 %     if mod(gr, 2) == 1 || ~layer2
     if ~layer2
         % LEarn layer 1
-        [ D, S, B, PI, post_PI, bias, Gamma] = GibbsLevel( Y, D, S, B, PI, post_PI, bias, Gamma, Alpha1, Beta1, c );        
+        [ ~, S, B, PI, post_PI, bias, Gamma] = GibbsLevel( Y, D, S, B, PI, post_PI, bias, Gamma, Alpha1, Beta1, c, false );        
         fprintf('[V1_L1]Iteration Complete: %d \n', gr)
         if layer2
             Y2 = sigmoid_Inv(post_PI);
