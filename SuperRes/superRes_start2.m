@@ -1,0 +1,429 @@
+clear
+close all
+% pathRoot = 'D:/ProjectData/caltech101/101_ObjectCategories/super_res_test/';
+imcategory = 'llama';
+pname = 'image_0020.jpg';
+im1 = imread(['D:\ProjectData\caltech101\101_ObjectCategories\' imcategory '\' pname]);
+if size(im1, 3) > 1
+im1 = double(rgb2gray(im1))/255;
+else
+    im1 = double(im1)/255;
+end
+figure
+imshow(im1)
+L = min(size(im1));
+SZ = 128.0;
+if(L > SZ)
+    im1 = imresize(im1, SZ/L);
+    
+    im1 = im1(1:SZ, 1:SZ);
+    im2 = imresize(im1, 0.5);
+    % im2 = upSample_with_noise(im2);
+    figure
+    imshow(im1)
+    figure
+    imshow(im2)
+    imwrite(im1, ['hres/', pname])
+    imwrite(im2, ['lres/' pname])
+else
+    fprintf('Image too small\n')
+end
+%% (Dictionary) Coefficient learning follows
+%% Load Layer 1
+gcp
+tic
+% load('D:\Users\Bishal Santra\Documents\MATLAB\MTP\neural_generative\WSs_10thSem\cat_6_img_12_beta1000.mat')
+toc
+%% Set folder
+close all
+imgPath = './'
+typeofimage = 'super_res_test/'
+%% Matrix created here
+reduceTo_lres = 64;
+reduceTo_hres = 128;
+patchsize_lres = 4;
+patchsize_hres = 8;
+column = 1;
+totalImages = 20;
+YL = GetDataMatrix([imgPath 'lres/'], reduceTo_lres, patchsize_lres, totalImages);
+YH = GetDataMatrix([imgPath 'hres/'], reduceTo_hres, patchsize_hres, totalImages);
+Y = [YL; YH];
+
+%% Initialize Layer 1
+close all
+K1 = 200;
+
+Alpha1 = {};
+Beta1 = {};
+
+% Params for gamma distro - LAYER 1
+Alpha1.d = 1;
+Beta1.d = 1;
+Alpha1.s = 1e-1;
+Beta1.s = 1e-1;
+Alpha1.bias = 1e-1;
+Beta1.bias = 1e-1;
+Alpha1.n = 1e-3;
+Beta1.n = 1e-3;
+
+% Params for beta distro : Near to zero, sparse
+Alpha1.pi = 1;
+Beta1.pi = 1200;
+
+tic
+[ D, S, B, PI, post_PI, bias, Gamma, c ] = InitAll( Y, K1, Alpha1, Beta1 );
+toc
+%% Plot images
+figure(1)
+clf
+r = 4;
+subplot(2, 5, 1)
+imshow(patch2im(Y(17:80,(1 + (r-1)*step):(r*step)), patchsize_hres));
+title('Actual_HRes')        
+
+subplot(2, 5, 2)
+recon = patch2im(Y_approx(17:80,(1 + (r-1)*step):(r*step)), patchsize_hres);
+imshow(recon)
+title('Recon_HRes')
+
+subplot(2, 5, 3)
+imshow(...
+    patch2im(...
+    Y(1:patchsize_lres^2,(1 + (r-1)*step):(r*step)),...
+    patchsize_lres)...
+    );
+title('Actual_LRes')        
+
+subplot(2, 5, 4)
+recon = ...
+    patch2im(...
+    Y_approx(1:patchsize_lres^2,(1 + (r-1)*step):(r*step)),...
+    patchsize_lres...
+    );
+imshow(recon)
+title('Recon_LRes')
+%% Gibbs
+figure(2)
+clf
+
+layer2 = false;
+tune_length = 10;
+round_1 = tune_length;
+round_2 = round_1 + tune_length;
+
+mse_array = zeros(2000, 1);
+for gr = 1:2000
+    % Test here only
+    Y_approx = D*(S.*B) + repmat(bias, 1, c.N);
+    if ~layer2
+        er = (sum((Y_approx(:) - Y(:)).^2))/(c.N*c.M);
+        fprintf('-----------\n');
+        fprintf('MSE: %10.8f\n', er);
+        mse_array(gr) = er;
+    else
+        er = (sum((Y_approx(:) - Y(:)).^2))/(c.N*c.M);
+        Y2_approx = D2*(S2.*B2) + repmat(bias2, 1, c2.N);
+        er2 = (sum((Y2_approx(:) - Y2(:)).^2))/(c2.N*c2.M);
+        fprintf('-----------\n');
+        fprintf('MSE@1: %6.3f\n', er);
+        fprintf('MSE@2: %6.3f\n', er2);
+    end
+    
+    r = 6;
+    step = (reduceTo_hres/patchsize_hres)^2;
+    subplot(2, 5, 1)
+    imshow(...
+        patch2im(...
+        Y((1+patchsize_lres^2):end,(1 + (r-1)*step):(r*step)),...
+        patchsize_hres)...
+        );
+    title('Actual_HRes')        
+
+    subplot(2, 5, 2)
+    recon = patch2im(...
+        Y_approx((1+patchsize_lres^2):end,(1 + (r-1)*step):(r*step)),...
+        patchsize_hres...
+        );
+    imshow(recon)
+    title('Recon_HRes')
+
+    subplot(2, 5, 3)
+%     imshow(patch2im(Y(17:80,(r+1):(r+l)), patchsize_hres))
+    imshow(...
+        patch2im(...
+        Y(1:patchsize_lres^2,(1 + (r-1)*step):(r*step)),...
+        patchsize_lres)...
+        );
+    title('Actual_LRes')        
+
+    subplot(2, 5, 4)
+    recon = ...
+        patch2im(...
+        Y_approx(1:patchsize_lres^2,(1 + (r-1)*step):(r*step)),...
+        patchsize_lres...
+        );
+    imshow(recon)
+    title('Recon_LRes')
+    
+    subplot(2, 5, 5)
+    imagesc(B)
+    title('B Matrix')
+    
+    drawnow
+    
+    tic
+    
+%     if mod(gr, 2) == 1 || ~layer2
+    if ~layer2
+        % LEarn layer 1
+        [ D, S, B, PI, post_PI, bias, Gamma] = GibbsLevel( Y, D, S, B, PI, post_PI, bias, Gamma, Alpha1, Beta1, c );        
+        fprintf('[V1_L1]Iteration Complete: %d \n', gr)
+        if layer2
+            Y2 = sigmoid_Inv(post_PI);
+            if reStructure
+                Y2 = repatch(Y2, reduceTo, patchsize, K1, totalImages);
+            end
+        end
+    else
+        %Learn Layer 2
+        [D2, S2, B2, PI2, post_PI2, bias2, Gamma2] = GibbsLevel( Y2, D2, S2, B2, PI2, post_PI2, bias2, Gamma2, Alpha2, Beta2, c2 );
+        fprintf('[V1_L2]Iteration Complete: %d \n', gr)
+    end
+%         % Learn Both
+%         [ D, S, B, PI, post_PI, bias, Gamma] = GibbsLevel( Y, D, S, B, PI, post_PI, bias, Gamma, Alpha1, Beta1, c );
+%         Y2 = sigmoid_Inv(post_PI);
+%         [D2, S2, B2, PI2, post_PI2, bias2, Gamma2] = GibbsLevel( Y2, D2, S2, B2, PI2, post_PI2, bias2, Gamma2, Alpha2, Beta2, c2 );
+%     end
+    
+    % save('WSs/runtime_backup_extend_16p', '-v7.3');
+    % Checkpoint for B - Layer 1
+    if mod(gr, 2) == 0
+        if sum(sum(B == 0)) == c.N*K1
+            display('Resetting B1')
+            [ ~, ~, B, ~, ~, ~, ~, ~ ] = InitAll( Y, K1, Alpha1, Beta1 );
+        end
+    end
+    
+    % Checkpoint for B - Layer 2
+    if mod(gr, 5) == 0 && layer2
+        if sum(sum(B2 == 0)) == c2.N*K2
+            display('Resetting B2')
+            [ ~, ~, B2, ~, ~, ~, ~, ~ ] = InitAll( Y2, K2, Alpha2, Beta2 );
+        end
+    end
+
+    toc
+    if layer2
+        fprintf('Noise Var: L1 -> %3.4f, L2 -> %3.4f\n', 1/Gamma.n, 1/Gamma2.n)
+    else
+        fprintf('Noise Var: L1 -> %3.4f\n', 1/Gamma.n)
+    end
+
+end
+fprintf('Gibbs Complete...\n')
+Pack_n_Show_dictionary(DH, DL)
+%% Plot reconstructed Image
+figure(2)
+clf
+Y_approx = D*(S.*B) + repmat(bias, 1, c.N);
+l = (reduceTo - patchsize + 1)^2;
+for r = 0:l:(c.N - 1)
+    subplot(1, 2, 1)
+    recon = patch2im(Y_approx(:,(r+1):(r+l)), patchsize);
+    recon(recon<=0) = 0;
+    recon(recon>=1) = 1;   
+    
+    imshow(recon)    
+    title('Recon')
+    subplot(1, 2, 2)
+    actual = patch2im(Y(:,(r+1):(r+l)), patchsize);
+    
+%     cl = clock;
+%     suffix = sprintf('%d%d%d%d', cl(3), cl(4), cl(5), floor(10*cl(6)));
+%     imwrite(recon, sprintf('outputs_nov/recon_%s.png', suffix));
+%     imwrite(actual, sprintf('outputs_nov/actual_%s.png', suffix));
+    
+    imshow(actual)
+    title('Actual')
+    drawnow
+    pause(0.4)
+end
+%% Plot Mse
+figure(1)
+clf
+plot(mse_array(1:gr))
+axis([1 gr 0 1.5])
+xlabel('Iteration')
+ylabel('MSE')
+title('MSE in approximation as a function of Gibbs Iteration')
+dim = [.2 0.3 .3 0];
+str = 'For training of 128 x 128 images, 8 x 8 patchsize';
+annotation('textbox',dim,'String',str,'FitBoxToText','on');
+%% Plot reconstructed Image 2
+figure(2)
+clf
+Y2_app = D2*(S2.*B2) + repmat(bias2, 1, c2.N);
+new_pi = 1./(1+exp(-Y2_app));
+B_new = binornd(ones(K1, c.N), new_pi);
+Y_approx = D*(S.*B_new) + repmat(bias, 1, c.N);
+Y_approx_1 = D*(S.*B) + repmat(bias, 1, c.N);
+l = (reduceTo - patchsize + 1)^2;
+for r = 0:l:2500
+    subplot(1, 2, 1)
+    recon = patch2im(Y_approx(:,(r+1):(r+l)), patchsize);
+    recon(recon<=0) = 0;
+    recon(recon>=1) = 1;
+    imshow(recon)
+    title('Recon')
+    subplot(1, 2, 2)
+    imshow(patch2im(Y_approx_1(:,(r+1):(r+l)), patchsize))
+    title('Actual')
+    drawnow
+    pause(0.3)
+end
+%% Plot the sorted B matrix
+[~, bi] = sort(sum(B, 2));
+figure(5), imagesc(B(bi, :))
+%% Plot the sorted B2 matrix
+[~, bi] = sort(sum(B2, 2));
+figure(5), imagesc(B2(bi, :))
+%% Plot all features
+normalize = @(mat) (mat - min(min(mat)))/(max(max(mat)) - min(min(mat)));
+% muD1_new = normalize(muD1);
+muD1_new = D;
+figure(2)
+clf
+gridsize = 5;
+l = (reduceTo - patchsize + 1)^2;
+subplot(gridsize, gridsize, 1)
+Y_approx = D*(S.*B) + repmat(bias, 1, c.N);
+imshow(patch2im(Y_approx(:,1:l), patchsize))
+sb = 2;
+[~, list_of_f] = sort(sum(B,2));
+list_of_f = list_of_f(end:-1:(end - 11));
+for i = 1:length(list_of_f)
+    sb = i*2;
+%     active_f = fs(sb - 1);
+    active_f = list_of_f(i);
+    tempB = B;
+    tempB([1:(active_f - 1), (active_f+1):K1], :) = 0;
+    Y_approx = D*(S.*tempB) + repmat(bias, 1, c.N);
+    
+    subplot(gridsize, gridsize, sb)
+    recon = normalize(patch2im(Y_approx(:,1:l), patchsize));
+    imshow(recon)
+    title(sprintf('Feature %d', active_f))
+    
+%     cl = clock;
+%     suffix = sprintf('%d%d%d%d', cl(3), cl(4), cl(5), floor(10*cl(6)));
+%     imwrite(recon, sprintf('outputs_nov/feat_%d.png', active_f));
+    
+    if totalImages > 1
+        subplot(gridsize, gridsize, sb + 1)
+        recon = normalize(patch2im(Y_approx(:,(l + 1):2*l), patchsize));
+        imshow(recon)
+        title(sprintf('Feature %d', active_f))
+    end
+    
+end
+%% Plot higher level features
+normalize = @(mat) (mat - min(min(mat)))/(max(max(mat)) - min(min(mat)));
+% muD1_new = normalize(muD1);
+figure(2)
+clf
+gridsize = 5;
+l = (reduceTo - patchsize + 1)^2;
+subplot(gridsize, gridsize, 1)
+Y_approx = D*(S.*B) + repmat(bias, 1, c.N);
+imshow(patch2im(Y_approx(:,1:l), patchsize))
+sb = 2;
+[~, list_of_f] = sort(sum(B2,2));
+list_of_f = list_of_f(end:-1:(end - 11));
+for i = 1:length(list_of_f)
+    sb = i*2;
+%     active_f = fs(sb - 1);
+    active_f = list_of_f(i);
+
+    Y2_approx = D2(:, active_f)*(S2(active_f, :).*B2(active_f, :)) + repmat(bias2, 1, c.N);
+    Y2_approx = 1./(1+exp(-Y2_approx));
+%     tempB = Y2_approx > 0.5;
+    tempB = binornd(ones(K1, c.N), Y2_approx);
+    Y_approx = D*(S.*(Y2_approx.*B)) + repmat(bias, 1, c.N);
+    
+    subplot(gridsize, gridsize, sb)
+    recon = (patch2im(Y_approx(:,1:l), patchsize));
+    imshow(recon)
+    title(sprintf('Feature %d', active_f))
+    if totalImages > 1
+    subplot(gridsize, gridsize, sb + 1)
+    recon = (patch2im(Y_approx(:,(l + 1):2*l), patchsize));
+    imshow(recon)
+    title(sprintf('Feature %d', active_f))
+    end
+end
+
+%% Draw Lower Level Patches
+figure(5)
+clf
+
+% Best Features same location
+[~, list_of_f] = sort(sum(B,2));
+list_of_f = list_of_f(end:-1:(end - 24));
+for i = 1:8
+    subplot(5,5,i)
+    j = list_of_f(i);
+    imshow(reshape(D(:, j), patchsize, patchsize))
+    imagesc(reshape(D(:, j), patchsize, patchsize)); colormap;
+    
+    imwrite(normalize(reshape(D(:, j), patchsize, patchsize)), sprintf('outputs_nov/patch_%d.png', j));
+    
+    title(sprintf('Feature %d', j))
+end
+figure(6)
+clf
+% Same Features Different Patches
+[~, list_of_f] = sort(sum(B,2));
+list_of_f = list_of_f(end:-1:(end - 24));
+j = list_of_f(4);
+Y_approx = D(:, j)*(S(j, :).*B(j,:)) + repmat(bias, 1, c.N);
+
+for i = 1:25
+    subplot(5,5,i)
+    imshow(reshape(Y_approx(:, 8*i), patchsize, patchsize))
+    imagesc(reshape(Y_approx(:, 8*i), patchsize, patchsize)); colormap;    
+    title(sprintf('Patch %d', 8*i))
+end
+%% Draw Higher Level Patches
+
+figure(7)
+clf
+% Best Features same location
+[~, list_of_f] = sort(sum(B2,2));
+list_of_f = list_of_f(end:-1:(end - 24));
+for i = 1:25
+    subplot(5,5,i)
+    j = list_of_f(i);
+    b_temp = 1./(1 + exp(-D2(:, j)*(S2(j, :).*B2(j, :)) + repmat(bias2, 1, c2.N)));
+    b_temp = binornd(ones(K1, c.N), b_temp);
+    Y_approx = D*(S.*b_temp.*B) + repmat(bias, 1, c.N);
+    imshow(reshape(Y_approx(:, 10), patchsize, patchsize))
+    imagesc(reshape(Y_approx(:, 10), patchsize, patchsize)); colormap;
+    title(sprintf('Feature %d', j))
+end
+
+figure(8)
+clf
+
+% Same Features Different Patches
+[~, list_of_f] = sort(sum(B2,2));
+list_of_f = list_of_f(end:-1:(end - 24));
+j = list_of_f(1);
+b_temp = 1./(1 + exp(-D2(:, j)*(S2(j, :).*B2(j, :)) + repmat(bias2, 1, c2.N)));
+b_temp = binornd(ones(K1, c.N), b_temp);
+Y_approx = D*(S.*b_temp.*B) + repmat(bias, 1, c.N);
+for i = 1:25
+    subplot(5,5,i)
+    imshow(reshape(Y_approx(:, 8*i), patchsize, patchsize))
+    imagesc(reshape(Y_approx(:, 8*i), patchsize, patchsize)); colormap;
+    title(sprintf('Patch %d', 8*i))
+end

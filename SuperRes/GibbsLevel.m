@@ -63,7 +63,9 @@ end
 if showTime
     tic
 end
-bias = sampleBias(Y, D, S, B, Gamma, c);
+if doUpdateD
+    bias = sampleBias(Y, D, S, B, Gamma, c);
+end
 if showTime
     t = toc;
     fprintf('SampleBias took %f s\n', t);
