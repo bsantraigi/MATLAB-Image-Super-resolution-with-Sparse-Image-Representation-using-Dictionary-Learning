@@ -1,9 +1,11 @@
-function [ Y ] = GetDataMatrix( folder, reduceTo, patchsize, totalImages )
+function [ Y, means_of_Y ] = GetDataMatrix( ...
+    folder, reduceTo, patchsize, totalImages, overlap )
 %GETDATAMATRIX Summary of this function goes here
 %   Detailed explanation goes here
 
 fl = dir(folder);
 Y = [];
+means_of_Y = [];
 % Auto calculate gap
 % gap = 7;
 for imindex = floor(linspace(3, length(fl), totalImages))
@@ -23,12 +25,15 @@ for imindex = floor(linspace(3, length(fl), totalImages))
         s = max(1, 1+drop - 1);
         imgTemp = imgTemp(:,s:(s+reduceTo-1));
     end
-    Y = [Y im2patch(imgTemp, patchsize)];
+    [Y_temp, means_of_Y_temp] = im2patch(imgTemp, patchsize, overlap);
+    Y = [Y Y_temp];
+    means_of_Y = [means_of_Y means_of_Y_temp];
     imshow(imgTemp)
     drawnow
     pause(0.1)
 end
 Y = Y./255;
+means_of_Y = means_of_Y./255;
 
 end
 

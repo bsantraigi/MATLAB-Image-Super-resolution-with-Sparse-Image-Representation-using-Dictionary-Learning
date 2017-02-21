@@ -4,14 +4,14 @@ gcp
 tic
 load('D:\Users\Bishal Santra\Documents\MATLAB\MTP\SuperRes\WSs_10thSem\8_n_16_coupled_v3_mean_subbed.mat')
 toc
-DL = D(1:16, :);
-DH = D(17:end, :);
+DL = D(1:patchsize_lres^2, :);
+DH = D((1+ patchsize_lres^2):end, :);
 DFull = D;
 D = DL;
 
 biasFull = bias;
-biasL = bias(1:16);
-biasH = bias(17:end);
+biasL = bias(1:patchsize_lres^2);
+biasH = bias((1+patchsize_lres^2):end);
 bias = biasL;
 %% Set folder
 close all
@@ -19,15 +19,20 @@ imgPath = './'
 typeofimage = 'super_res_test/'
 %% Matrix created here
 close all
-reduceTo_lres = 128;
-reduceTo_hres = 256;
+reduceTo_lres = 64;
+reduceTo_hres = 128;
 patchsize_lres = 4;
 patchsize_hres = 8;
 column = 1;
 totalImages = 2;
-YL = GetDataMatrix([imgPath 'lres/'], reduceTo_lres, patchsize_lres, totalImages);
-YH = GetDataMatrix([imgPath 'hres/'], reduceTo_hres, patchsize_hres, totalImages);
+overlap_low = 2;
+overlap_high = 4;
+[YL, means_of_YL] = GetDataMatrix([imgPath 'lres/'],...
+    reduceTo_lres, patchsize_lres, totalImages, overlap_low);
+[YH, means_of_YH] = GetDataMatrix([imgPath 'hres/'],...
+    reduceTo_hres, patchsize_hres, totalImages, overlap_high);
 Y = [YL];
+means_of_Y = [means_of_YL; means_of_YH];
 %% Initialize Layer 1
 
 % K1 = 200;
@@ -130,6 +135,12 @@ Pack_n_Show_dictionary(DH, DL);
 figure(2)
 clf
 
+recon = patch2im(...
+        Y, ...
+        r, reduceTo_lres, reduceTo_lres,...
+        patchsize_lres, isAddingMean*means_of_YL, overlap_low);
+sres_bcubic = imresize(recon, 2, 'bicubic');
+
 training_started=true;
 
 tune_length = 10;
@@ -147,42 +158,49 @@ for gr = 1:2000
     fprintf('MSE: %10.8f\n', er);
     mse_array(gr) = er;
     
-    r = 1;
+    r = 2;
+    isAddingMean = true;
     step = (reduceTo_hres/patchsize_hres)^2;
     subplot(2, 5, 1)
-%     imshow(patch2im(Y(17:80,(r+1):(r+l)), patchsize_hres))
-    recon = normalize(patch2im(YH(:,(1 + (r-1)*step):(r*step)), patchsize_hres));
+    recon = patch2im(...
+        YH, ...
+        r, reduceTo_hres, reduceTo_hres,...
+        patchsize_hres, isAddingMean*means_of_YH, overlap_high);
     imshow(recon);
     title('Actual_HRes')
 
     subplot(2, 5, 2)
-    recon = normalize(patch2im(Y_approxH(:,(1 + (r-1)*step):(r*step)), patchsize_hres));
+    recon = patch2im(...
+        Y_approxH, ...
+        r, reduceTo_hres, reduceTo_hres,...
+        patchsize_hres, isAddingMean*means_of_YL, overlap_high);
     imshow(recon)
     title('Recon_HRes')
 
     subplot(2, 5, 3)
 %     imshow(patch2im(Y(17:80,(r+1):(r+l)), patchsize_hres))
-    recon = normalize(...
-        patch2im(...
-        YL(:,(1 + (r-1)*step):(r*step)),...
-        patchsize_lres)...
-        );
+    recon = patch2im(...
+        Y, ...
+        r, reduceTo_lres, reduceTo_lres,...
+        patchsize_lres, isAddingMean*means_of_YL, overlap_low);
     imshow(recon);
     title('Actual_LRes')        
 
     subplot(2, 5, 4)
-    recon = normalize(...
-        patch2im(...
-        Y_approx(1:patchsize_lres^2,(1 + (r-1)*step):(r*step)),...
-        patchsize_lres...
-        ));
-    
+    recon = patch2im(...
+        Y_approx, ...
+        r, reduceTo_lres, reduceTo_lres,...
+        patchsize_lres, isAddingMean*means_of_YL, overlap_low);
     imshow(recon)
     title('Recon_LRes')
     
     subplot(2, 5, 5)
     imagesc(B)
     title('B Matrix')
+    
+    subplot(2, 5, 6)
+    imshow(sres_bcubic)
+    title('Bicubic')
     
     drawnow
     
@@ -212,3 +230,44 @@ for gr = 1:2000
 
 end
 fprintf('Gibbs Complete...\n')
+
+%% Optimizer - Prepare Code
+% Lf matrix - Down-Sampler matrix
+locate = (repmat(8*(1:2:8)', 1, 4)+repmat((1:2:8), 4, 1) + 1)';
+locate = locate(:);
+Lf = eye(64, 64);
+Lf = Lf(locate, :);
+
+% Test Lf Matrix
+p = 1:64; p = reshape(p, 8, 8); p
+imresize(p, 0.5, 'nearest')
+L = eye(8, 8);
+L = L(2:2:8, :);
+R = eye(8, 8);
+R = R(:, 2:2:8);
+L*p*R;
+reshape(Lf * p(:), 4, 4)
+
+%% Optimizer
+
+% Lf matrix - Down-Sampler matrix
+locate = (repmat(...
+    patchsize_hres*(1:2:patchsize_hres)', 1, patchsize_lres)+...
+    repmat((1:2:patchsize_hres), patchsize_lres, 1) + 1)';
+locate = locate(:);
+Lf = eye(patchsize_hres^2);
+Lf = Lf(locate, :);
+
+% Hyperparameters
+k1 = 0.9;
+k2 = 0.9;
+
+% Define DHU and DHL
+DHU = DH(1:overlap_high*patchsize_hres, :);
+DHL = DH((end - overlap_high*patchsize_hres + 1):end, :);
+% Calculate delJ
+for i = 2:size(S,2)
+    delT1 = -2*(DHU'*DHL)*(S(:,i - 1).*B(:, i -1)) +...
+        2*(DHU'*DHU)*(S(:,i).*B(:,i));
+    delT2 = 
+end

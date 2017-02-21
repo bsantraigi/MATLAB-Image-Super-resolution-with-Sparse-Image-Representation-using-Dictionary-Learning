@@ -39,15 +39,20 @@ close all
 imgPath = './'
 typeofimage = 'super_res_test/'
 %% Matrix created here
-reduceTo_lres = 64;
+reduceTo_lres = 32;
 reduceTo_hres = 128;
-patchsize_lres = 4;
+patchsize_lres = 2;
 patchsize_hres = 8;
 column = 1;
-totalImages = 20;
-YL = GetDataMatrix([imgPath 'lres/'], reduceTo_lres, patchsize_lres, totalImages);
-YH = GetDataMatrix([imgPath 'hres/'], reduceTo_hres, patchsize_hres, totalImages);
+totalImages = 2;
+overlap_low = 1;
+overlap_high = 4;
+[YL, means_of_YL] = GetDataMatrix([imgPath 'lres/'],...
+    reduceTo_lres, patchsize_lres, totalImages, overlap_low);
+[YH, means_of_YH] = GetDataMatrix([imgPath 'hres/'],...
+    reduceTo_hres, patchsize_hres, totalImages, overlap_high);
 Y = [YL; YH];
+means_of_Y = [means_of_YL; means_of_YH];
 
 %% Initialize Layer 1
 close all
@@ -68,7 +73,7 @@ Beta1.n = 1e-3;
 
 % Params for beta distro : Near to zero, sparse
 Alpha1.pi = 1;
-Beta1.pi = 1200;
+Beta1.pi = 800;
 
 tic
 [ D, S, B, PI, post_PI, bias, Gamma, c ] = InitAll( Y, K1, Alpha1, Beta1 );
@@ -127,41 +132,40 @@ for gr = 1:2000
         fprintf('-----------\n');
         fprintf('MSE@1: %6.3f\n', er);
         fprintf('MSE@2: %6.3f\n', er2);
-    end
+    end   
     
-    r = 6;
+    r = 1;
     step = (reduceTo_hres/patchsize_hres)^2;
     subplot(2, 5, 1)
-    imshow(...
-        patch2im(...
-        Y((1+patchsize_lres^2):end,(1 + (r-1)*step):(r*step)),...
-        patchsize_hres)...
-        );
-    title('Actual_HRes')        
+    recon = patch2im(...
+        Y((1+patchsize_lres^2):end, :), ...
+        r, reduceTo_hres, reduceTo_hres,...
+        patchsize_hres, means_of_YH, overlap_high);
+    imshow(recon);
+    title('Actual_HRes')
 
     subplot(2, 5, 2)
     recon = patch2im(...
-        Y_approx((1+patchsize_lres^2):end,(1 + (r-1)*step):(r*step)),...
-        patchsize_hres...
-        );
+        Y_approx((1+patchsize_lres^2):end, :), ...
+        r, reduceTo_hres, reduceTo_hres,...
+        patchsize_hres, means_of_YH, overlap_high);
     imshow(recon)
     title('Recon_HRes')
 
     subplot(2, 5, 3)
 %     imshow(patch2im(Y(17:80,(r+1):(r+l)), patchsize_hres))
-    imshow(...
-        patch2im(...
-        Y(1:patchsize_lres^2,(1 + (r-1)*step):(r*step)),...
-        patchsize_lres)...
-        );
+    recon = patch2im(...
+        Y(1:patchsize_lres^2, :), ...
+        r, reduceTo_lres, reduceTo_lres,...
+        patchsize_lres, means_of_YL, overlap_low);
+    imshow(recon);
     title('Actual_LRes')        
 
     subplot(2, 5, 4)
-    recon = ...
-        patch2im(...
-        Y_approx(1:patchsize_lres^2,(1 + (r-1)*step):(r*step)),...
-        patchsize_lres...
-        );
+    recon = patch2im(...
+        Y_approx(1:patchsize_lres^2, :), ...
+        r, reduceTo_lres, reduceTo_lres,...
+        patchsize_lres, means_of_YL, overlap_low);
     imshow(recon)
     title('Recon_LRes')
     
