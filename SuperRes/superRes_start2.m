@@ -35,19 +35,20 @@ tic
 % load('D:\Users\Bishal Santra\Documents\MATLAB\MTP\neural_generative\WSs_10thSem\cat_6_img_12_beta1000.mat')
 toc
 %% Set folder
-close all
 imgPath = './'
 typeofimage = 'super_res_test/'
+
 %% Matrix created here
-reduceTo_lres = 32;
+close all
+reduceTo_lres = 128;
 reduceTo_hres = 128;
-patchsize_lres = 2;
+patchsize_lres = 8;
 patchsize_hres = 8;
 column = 1;
-totalImages = 2;
-overlap_low = 1;
-overlap_high = 4;
-[YL, means_of_YL] = GetDataMatrix([imgPath 'lres/'],...
+totalImages = 10;
+overlap_low = 2;
+overlap_high = 2;
+[YL, means_of_YL] = GetDataMatrix_4x([imgPath 'lres/'],...
     reduceTo_lres, patchsize_lres, totalImages, overlap_low);
 [YH, means_of_YH] = GetDataMatrix([imgPath 'hres/'],...
     reduceTo_hres, patchsize_hres, totalImages, overlap_high);
@@ -81,30 +82,38 @@ toc
 %% Plot images
 figure(1)
 clf
-r = 4;
+r = 5;
+step = (reduceTo_hres/patchsize_hres)^2;
 subplot(2, 5, 1)
-imshow(patch2im(Y(17:80,(1 + (r-1)*step):(r*step)), patchsize_hres));
-title('Actual_HRes')        
+recon = patch2im(...
+    Y((1+patchsize_lres^2):end, :), ...
+    r, reduceTo_hres, reduceTo_hres,...
+    patchsize_hres, means_of_YH, overlap_high);
+imshow(recon);
+title('Actual_HRes')
 
 subplot(2, 5, 2)
-recon = patch2im(Y_approx(17:80,(1 + (r-1)*step):(r*step)), patchsize_hres);
+recon = patch2im(...
+    Y_approx((1+patchsize_lres^2):end, :), ...
+    r, reduceTo_hres, reduceTo_hres,...
+    patchsize_hres, means_of_YH, overlap_high);
 imshow(recon)
 title('Recon_HRes')
 
 subplot(2, 5, 3)
-imshow(...
-    patch2im(...
-    Y(1:patchsize_lres^2,(1 + (r-1)*step):(r*step)),...
-    patchsize_lres)...
-    );
+%     imshow(patch2im(Y(17:80,(r+1):(r+l)), patchsize_hres))
+recon = patch2im(...
+    Y(1:patchsize_lres^2, :), ...
+    r, reduceTo_lres, reduceTo_lres,...
+    patchsize_lres, means_of_YL, overlap_low);
+imshow(recon);
 title('Actual_LRes')        
 
 subplot(2, 5, 4)
-recon = ...
-    patch2im(...
-    Y_approx(1:patchsize_lres^2,(1 + (r-1)*step):(r*step)),...
-    patchsize_lres...
-    );
+recon = patch2im(...
+    Y_approx(1:patchsize_lres^2, :), ...
+    r, reduceTo_lres, reduceTo_lres,...
+    patchsize_lres, means_of_YL, overlap_low);
 imshow(recon)
 title('Recon_LRes')
 %% Gibbs
@@ -134,7 +143,7 @@ for gr = 1:2000
         fprintf('MSE@2: %6.3f\n', er2);
     end   
     
-    r = 1;
+    r = 5;
     step = (reduceTo_hres/patchsize_hres)^2;
     subplot(2, 5, 1)
     recon = patch2im(...
@@ -225,7 +234,11 @@ for gr = 1:2000
 
 end
 fprintf('Gibbs Complete...\n')
-Pack_n_Show_dictionary(DH, DL)
+%% Show dictionaries in order
+usageIndex = sum(B, 2);
+[~, order_in] = sort(usageIndex, 'descend');
+Pack_n_Show_dictionary(DH(:, order_in), DL(:, order_in))
+
 %% Plot reconstructed Image
 figure(2)
 clf
