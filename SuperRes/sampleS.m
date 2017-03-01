@@ -1,17 +1,21 @@
-function [ S ] = sampleS(Y, D, S, B, bias, Gamma, c )
+function [ S ] = sampleS(YH, YL, DH, DL, S, B, biasH, biasL, Gamma, c )
 %SAMPLES Summary of this function goes here
 %   Detailed explanation goes here
 
-M = c.M;
+MH = c.MH;
+ML = c.ML;
 N = c.N;
 K = c.K;
 Ik = eye(K);
-gam_n = Gamma.n;
+gam_nH = Gamma.nH;
+gam_nL = Gamma.nL;
 gam_s = Gamma.s;
 parfor i = 1:N
-    DB = D.*repmat(B(:,i)', M, 1);
-    C = inv(gam_n.*(DB'*DB) + gam_s.*Ik);
-    musi = C*(gam_n.*DB'*(Y(:, i) - bias));
+    DHB = DH.*repmat(B(:,i)', MH, 1);
+    DLB = DL.*repmat(B(:,i)', ML, 1);
+    C = inv(gam_nH.*(DHB'*DHB) + gam_nL.*(DLB'*DLB) + gam_s.*Ik);
+    musi = C*(gam_nH.*DHB'*(YH(:, i) - biasH) + ...
+        gam_nL.*DLB'*(YL(:, i) - biasL));
     S(:, i) = mvnrnd(musi, C);
 end
 

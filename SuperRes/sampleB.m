@@ -1,26 +1,38 @@
-function [ B, post_PI ] = sampleB( Y, D, S, B, PI, post_PI, bias, Gamma, c )
+function [ B, post_PI ] = sampleB( ...
+    YH, YL, DH, DL, S, B, PI, post_PI, biasH, biasL, Gamma, c )
 %SAMPLEB Summary of this function goes here
 %   Detailed explanation goes here
 
-M = c.M;
+MH = c.MH;
+ML = c.ML;
 N = c.N;
 K = c.K;
 
 for k = 1:K
-    SB = S.*B;    
+    SB = S.*B;
+    notk = [1:(k - 1),(k + 1):K];
 %     dtDelY = D(:, k)'*...
 %         (Y - repmat(bias, 1, N) - D(:, [1:(k - 1),(k + 1):K])*SB([1:(k - 1),(k + 1):K], :));
-    dtDelY = D(:, k)'*...
-        (Y - repmat(bias, 1, N) - D(:, [1:(k - 1),(k + 1):K])*SB([1:(k - 1),(k + 1):K], :));
-    dTd_k = (D(:, k)'*D(:, k));
+    dtDelYH = DH(:, k)'*...
+        (YH - repmat(biasH, 1, N) - DH(:, notk)*SB(notk, :));
+    dtDelYL = DL(:, k)'*...
+        (YL - repmat(biasL, 1, N) - DL(:, notk)*SB(notk, :));
+    dTdH_k = (DH(:, k)'*DH(:, k));
+    dTdL_k = (DL(:, k)'*DL(:, k));
     pi_k = PI(k);
     p0 = (1 - pi_k);
-    gam_n = Gamma.n;
+    gam_nH = Gamma.nH;
+    gam_nL = Gamma.nL;
     
     % On GPU
-    dtDelY_gpu = gpuArray(dtDelY);
+    dtDelYH_gpu = gpuArray(dtDelYH);
+    dtDelYL_gpu = gpuArray(dtDelYL);
     Sk_gpu = gpuArray(S(k, :));
-    p1_all = gather(pi_k*exp(-0.5*gam_n*(dTd_k*(Sk_gpu.^2) - 2*Sk_gpu.*dtDelY_gpu)));
+    innerH = 0.5*gam_nH*(dTdH_k*(Sk_gpu.^2) - 2*Sk_gpu.*dtDelYH_gpu);
+    innerL = 0.5*gam_nL*(dTdL_k*(Sk_gpu.^2) - 2*Sk_gpu.*dtDelYL_gpu);
+    
+    
+    p1_all = gather(pi_k*exp(- innerH - innerL));
     p1_all(p1_all < Inf) =...
         p1_all(p1_all < Inf)./(p1_all(p1_all < Inf) + p0);
     p1_all(isinf(p1_all)) = 1;

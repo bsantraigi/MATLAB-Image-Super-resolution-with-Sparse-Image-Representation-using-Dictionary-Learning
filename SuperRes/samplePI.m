@@ -2,7 +2,6 @@ function [ PI ] = samplePI( B, PI, Alpha, Beta, c )
 %SAMPLEPI Summary of this function goes here
 %   Detailed explanation goes here
 
-M = c.M;
 N = c.N;
 K = c.K;
 for k = 1:K

@@ -55,7 +55,9 @@ Alpha1.pi = 1;
 Beta1.pi = 1800;
 
 tic
-[ ~, S, B, PI, post_PI, ~, Gamma, c ] = InitAll( Y, K1, Alpha1, Beta1 );
+% [ ~, S, B, PI, post_PI, ~, Gamma, c ] = InitAll( Y, K1, Alpha1, Beta1 );
+[ ~, ~, S, B, ~, post_PI, ~, ~, ~, ~ ] =...
+    InitAll( YH, YL, K1, Alpha1, Beta1 );
 toc
 
 %% Plot images

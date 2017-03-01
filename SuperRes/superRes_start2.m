@@ -40,24 +40,24 @@ typeofimage = 'super_res_test/'
 
 %% Matrix created here
 close all
-reduceTo_lres = 128;
+reduceTo_lres = 64;
 reduceTo_hres = 128;
-patchsize_lres = 8;
+patchsize_lres = 4;
 patchsize_hres = 8;
 column = 1;
 totalImages = 10;
-overlap_low = 2;
+overlap_low = 1;
 overlap_high = 2;
-[YL, means_of_YL] = GetDataMatrix_4x([imgPath 'lres/'],...
+[YL, means_of_YL] = GetDataMatrix([imgPath 'lres/'],...
     reduceTo_lres, patchsize_lres, totalImages, overlap_low);
 [YH, means_of_YH] = GetDataMatrix([imgPath 'hres/'],...
     reduceTo_hres, patchsize_hres, totalImages, overlap_high);
-Y = [YL; YH];
-means_of_Y = [means_of_YL; means_of_YH];
+% Y = [YL; YH];
+% means_of_Y = [means_of_YL; means_of_YH];
 
 %% Initialize Layer 1
 close all
-K1 = 200;
+K1 = 400;
 
 Alpha1 = {};
 Beta1 = {};
@@ -77,7 +77,8 @@ Alpha1.pi = 1;
 Beta1.pi = 800;
 
 tic
-[ D, S, B, PI, post_PI, bias, Gamma, c ] = InitAll( Y, K1, Alpha1, Beta1 );
+[ DH, DL, S, B, PI, post_PI, biasH, biasL, Gamma, c ] =...
+    InitAll( YH, YL, K1, Alpha1, Beta1 );
 toc
 %% Plot images
 figure(1)
@@ -120,61 +121,55 @@ title('Recon_LRes')
 figure(2)
 clf
 
-layer2 = false;
 tune_length = 10;
 round_1 = tune_length;
 round_2 = round_1 + tune_length;
 
 mse_array = zeros(2000, 1);
+
+isAddingMean = true;
 for gr = 1:2000
     % Test here only
-    Y_approx = D*(S.*B) + repmat(bias, 1, c.N);
-    if ~layer2
-        er = (sum((Y_approx(:) - Y(:)).^2))/(c.N*c.M);
-        fprintf('-----------\n');
-        fprintf('MSE: %10.8f\n', er);
-        mse_array(gr) = er;
-    else
-        er = (sum((Y_approx(:) - Y(:)).^2))/(c.N*c.M);
-        Y2_approx = D2*(S2.*B2) + repmat(bias2, 1, c2.N);
-        er2 = (sum((Y2_approx(:) - Y2(:)).^2))/(c2.N*c2.M);
-        fprintf('-----------\n');
-        fprintf('MSE@1: %6.3f\n', er);
-        fprintf('MSE@2: %6.3f\n', er2);
-    end   
+    YH_approx = DH*(S.*B) + repmat(biasH, 1, c.N);
+    YL_approx = DL*(S.*B) + repmat(biasL, 1, c.N);
     
-    r = 5;
-    step = (reduceTo_hres/patchsize_hres)^2;
+    erH = (sum((YH_approx(:) - YH(:)).^2))/(c.N*c.MH);
+    erL = (sum((YL_approx(:) - YL(:)).^2))/(c.N*c.ML);
+    fprintf('-----------\n');
+    fprintf('MSE: %10.8f, %10.8f\n', erH, erL);
+    mse_array(gr) = erH;
+    
+    r = 2;
     subplot(2, 5, 1)
     recon = patch2im(...
-        Y((1+patchsize_lres^2):end, :), ...
+        YH, ...
         r, reduceTo_hres, reduceTo_hres,...
-        patchsize_hres, means_of_YH, overlap_high);
+        patchsize_hres, isAddingMean*means_of_YH, overlap_high);
     imshow(recon);
     title('Actual_HRes')
 
     subplot(2, 5, 2)
     recon = patch2im(...
-        Y_approx((1+patchsize_lres^2):end, :), ...
+        YH_approx, ...
         r, reduceTo_hres, reduceTo_hres,...
-        patchsize_hres, means_of_YH, overlap_high);
+        patchsize_hres, isAddingMean*means_of_YH, overlap_high);
     imshow(recon)
     title('Recon_HRes')
 
     subplot(2, 5, 3)
 %     imshow(patch2im(Y(17:80,(r+1):(r+l)), patchsize_hres))
     recon = patch2im(...
-        Y(1:patchsize_lres^2, :), ...
+        YL, ...
         r, reduceTo_lres, reduceTo_lres,...
-        patchsize_lres, means_of_YL, overlap_low);
+        patchsize_lres, isAddingMean*means_of_YL, overlap_low);
     imshow(recon);
     title('Actual_LRes')        
 
     subplot(2, 5, 4)
     recon = patch2im(...
-        Y_approx(1:patchsize_lres^2, :), ...
+        YL_approx, ...
         r, reduceTo_lres, reduceTo_lres,...
-        patchsize_lres, means_of_YL, overlap_low);
+        patchsize_lres, isAddingMean*means_of_YL, overlap_low);
     imshow(recon)
     title('Recon_LRes')
     
@@ -184,53 +179,23 @@ for gr = 1:2000
     
     drawnow
     
-    tic
+    tic    
+    % LEarn layer 1
+    [ DH, DL, S, B, PI, post_PI, biasH, biasL, Gamma ] = ...
+        GibbsLevel( YH, YL, DH, DL, S, B, PI, post_PI,...
+        biasH, biasL, Gamma, Alpha1, Beta1, c );        
+    fprintf('[V1_L1]Iteration Complete: %d \n', gr)
     
-%     if mod(gr, 2) == 1 || ~layer2
-    if ~layer2
-        % LEarn layer 1
-        [ D, S, B, PI, post_PI, bias, Gamma] = GibbsLevel( Y, D, S, B, PI, post_PI, bias, Gamma, Alpha1, Beta1, c );        
-        fprintf('[V1_L1]Iteration Complete: %d \n', gr)
-        if layer2
-            Y2 = sigmoid_Inv(post_PI);
-            if reStructure
-                Y2 = repatch(Y2, reduceTo, patchsize, K1, totalImages);
-            end
-        end
-    else
-        %Learn Layer 2
-        [D2, S2, B2, PI2, post_PI2, bias2, Gamma2] = GibbsLevel( Y2, D2, S2, B2, PI2, post_PI2, bias2, Gamma2, Alpha2, Beta2, c2 );
-        fprintf('[V1_L2]Iteration Complete: %d \n', gr)
-    end
-%         % Learn Both
-%         [ D, S, B, PI, post_PI, bias, Gamma] = GibbsLevel( Y, D, S, B, PI, post_PI, bias, Gamma, Alpha1, Beta1, c );
-%         Y2 = sigmoid_Inv(post_PI);
-%         [D2, S2, B2, PI2, post_PI2, bias2, Gamma2] = GibbsLevel( Y2, D2, S2, B2, PI2, post_PI2, bias2, Gamma2, Alpha2, Beta2, c2 );
-%     end
-    
-    % save('WSs/runtime_backup_extend_16p', '-v7.3');
-    % Checkpoint for B - Layer 1
     if mod(gr, 2) == 0
         if sum(sum(B == 0)) == c.N*K1
-            display('Resetting B1')
-            [ ~, ~, B, ~, ~, ~, ~, ~ ] = InitAll( Y, K1, Alpha1, Beta1 );
-        end
-    end
-    
-    % Checkpoint for B - Layer 2
-    if mod(gr, 5) == 0 && layer2
-        if sum(sum(B2 == 0)) == c2.N*K2
-            display('Resetting B2')
-            [ ~, ~, B2, ~, ~, ~, ~, ~ ] = InitAll( Y2, K2, Alpha2, Beta2 );
+            display('Resetting B1')            
+            [ ~, ~, ~, B, ~, ~, ~, ~, ~, ~ ]...
+                = InitAll( YH, YL, K1, Alpha1, Beta1 );
         end
     end
 
     toc
-    if layer2
-        fprintf('Noise Var: L1 -> %3.4f, L2 -> %3.4f\n', 1/Gamma.n, 1/Gamma2.n)
-    else
-        fprintf('Noise Var: L1 -> %3.4f\n', 1/Gamma.n)
-    end
+    fprintf('Noise Vars: %3.4f, %3.4f\n', 1/Gamma.nH, 1/Gamma.nL)
 
 end
 fprintf('Gibbs Complete...\n')

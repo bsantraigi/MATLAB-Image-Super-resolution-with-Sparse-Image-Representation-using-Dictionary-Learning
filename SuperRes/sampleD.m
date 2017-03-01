@@ -1,8 +1,12 @@
-function [ D ] = sampleD(Y, D, S, B, bias, Gamma, c )
+function [ D ] = sampleD(Y, D, S, B, bias, Gamma, c, flag )
 %SAMPLED Summary of this function goes here
 %   Detailed explanation goes here
 
-M = c.M;
+if flag == 'H'
+    M = c.MH;
+else
+    M = c.ML;
+end
 N = c.N;
 K = c.K;
 SB = S.*B;
@@ -14,8 +18,15 @@ g_SB = gpuArray(SB);
 g_D = gpuArray(D);
 g_Y = gpuArray(Y);
 g_BiasN = gpuArray(repmat(bias, 1, N));
-g_gam_n = gpuArray(Gamma.n);
-g_gam_d = gpuArray(Gamma.d);
+if flag == 'H'
+    g_gam_n = gpuArray(Gamma.nH);
+    g_gam_d = gpuArray(Gamma.dH);
+else
+    g_gam_n = gpuArray(Gamma.nL);
+    g_gam_d = gpuArray(Gamma.dL);
+end
+
+
 %% Loopy Loop
 for k = 1:K
     

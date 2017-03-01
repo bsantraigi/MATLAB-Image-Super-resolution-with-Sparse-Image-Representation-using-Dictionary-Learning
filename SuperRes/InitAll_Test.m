@@ -1,6 +1,6 @@
 function [ DH, DL, S, B, PI, ...
     post_PI, biasH, biasL, Gamma, c ] = ...
-    InitAll( YH, YL, K, Alpha, Beta )
+    InitAll( YH, YL, K, Alpha, Beta, PI )
 %INITALL Summary of this function goes here
 %   Detailed explanation goes here
 
