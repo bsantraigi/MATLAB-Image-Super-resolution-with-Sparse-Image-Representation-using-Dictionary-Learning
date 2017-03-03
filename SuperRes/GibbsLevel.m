@@ -5,11 +5,18 @@ function [ DH, DL, S, B, PI, post_PI, biasH, biasL, Gamma ] = ...
 %   Detailed explanation goes here
 
 showTime = false;
+if nargin > 14
+    TestingMode = varargin{1};
+else
+    TestingMode = true;
+end
 %% SamplePI - CHECKED
 if showTime
     tic
 end
-PI = samplePI(B, PI, Alpha, Beta, c);
+if ~TestingMode
+    PI = samplePI(B, PI, Alpha, Beta, c);
+end
 if showTime
     t = toc;
     fprintf('SamplePI took %f s\n', t);
@@ -18,7 +25,11 @@ end
 if showTime
     tic
 end
-[B, post_PI] = sampleB(YH, YL, DH, DL, S, B, PI, post_PI, biasH, biasL, Gamma, c);
+if ~TestingMode
+    [B, post_PI] = sampleB(YH, YL, DH, DL, S, B, PI, post_PI, biasH, biasL, Gamma, c);
+else
+    [B, post_PI] = sampleB_Test(YL, DL, S, B, PI, post_PI, biasL, Gamma, c);
+end
 if showTime
     t = toc;
     fprintf('SampleB took %f s\n', t);
@@ -28,23 +39,19 @@ end
 if showTime
     tic
 end
-Gamma = sampleGammas(YH, YL, DH, DL, S, B,...
-    biasH, biasL, Gamma, Alpha, Beta, c);
+if ~TestingMode
+    Gamma = sampleGammas(YH, YL, DH, DL, S, B,...
+        biasH, biasL, Gamma, Alpha, Beta, c);
+end
 if showTime
     t = toc;
     fprintf('SampleGamma took %f s\n', t);
 end
 %% SampleD - CHECKED
-if nargin > 14
-    doUpdateD = varargin{1};
-else
-    doUpdateD = true;
-end
-
 if showTime
     tic
 end
-if doUpdateD
+if ~TestingMode
     DH = sampleD(YH, DH, S, B, biasH, Gamma, c, 'H');
     DL = sampleD(YL, DL, S, B, biasL, Gamma, c, 'L');
 end
@@ -57,7 +64,11 @@ end
 if showTime
     tic
 end
-S = sampleS(YH, YL, DH, DL, S, B, biasH, biasL, Gamma, c);
+if ~TestingMode
+    S = sampleS(YH, YL, DH, DL, S, B, biasH, biasL, Gamma, c);
+else
+    S = sampleS_Test(YL, DL, S, B, biasL, Gamma, c);
+end
 if showTime
     t = toc;
     fprintf('SampleS took %f s\n', t);
@@ -67,7 +78,7 @@ end
 if showTime
     tic
 end
-if doUpdateD
+if ~TestingMode
     biasH = sampleBias(YH, DH, S, B, Gamma, c, 'H');
     biasL = sampleBias(YL, DL, S, B, Gamma, c, 'L');
 end

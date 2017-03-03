@@ -203,7 +203,8 @@ fprintf('Gibbs Complete...\n')
 usageIndex = sum(B, 2);
 [~, order_in] = sort(usageIndex, 'descend');
 Pack_n_Show_dictionary(DH(:, order_in), DL(:, order_in))
-
+figure(198)
+plot(PI(order_in));
 %% Plot reconstructed Image
 figure(2)
 clf
