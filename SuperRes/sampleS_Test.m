@@ -2,11 +2,11 @@ function [ S ] = sampleS_Test(Y, D, S, B, bias, Gamma, c )
 %SAMPLES Summary of this function goes here
 %   Detailed explanation goes here
 
-M = c.ML; % HARD-CODE
+M = c.MH; % HARD-CODE
 N = c.N;
 K = c.K;
 Ik = eye(K);
-gam_n = Gamma.nL; % HARD-CODE
+gam_n = Gamma.nH; % HARD-CODE
 gam_s = Gamma.s;
 parfor i = 1:N
     DB = D.*repmat(B(:,i)', M, 1);

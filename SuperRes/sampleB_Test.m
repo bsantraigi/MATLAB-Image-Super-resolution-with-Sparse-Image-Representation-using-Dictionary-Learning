@@ -14,7 +14,7 @@ for k = 1:K
     dTd_k = (D(:, k)'*D(:, k));
     pi_k = PI(k);
     p0 = (1 - pi_k);
-    gam_n = Gamma.nL; % HARD-CODE
+    gam_n = Gamma.nH; % HARD-CODE
     
     % On GPU
     dtDelY_gpu = gpuArray(dtDelY);
