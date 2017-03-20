@@ -1,20 +1,20 @@
-function [ B, post_PI ] = sampleB_Test( Y, D, S, B, PI, post_PI, bias, Gamma, c )
+function [ B, post_PI ] = NextB( X, DH, S, B, PI, biasH, Gamma, c )
 %SAMPLEB Summary of this function goes here
 %   Detailed explanation goes here
 
 N = c.N;
 K = c.K;
-
+post_PI = zeros(K, N);
 for k = 1:K
     SB = S.*B;    
 %     dtDelY = D(:, k)'*...
 %         (Y - repmat(bias, 1, N) - D(:, [1:(k - 1),(k + 1):K])*SB([1:(k - 1),(k + 1):K], :));
-    dtDelY = D(:, k)'*...
-        (Y - repmat(bias, 1, N) - D(:, [1:(k - 1),(k + 1):K])*SB([1:(k - 1),(k + 1):K], :));
-    dTd_k = (D(:, k)'*D(:, k));
+    dtDelY = DH(:, k)'*...
+        (X - repmat(biasH, 1, N) - DH(:, [1:(k - 1),(k + 1):K])*SB([1:(k - 1),(k + 1):K], :));
+    dTd_k = (DH(:, k)'*DH(:, k));
     pi_k = PI(k);
     p0 = (1 - pi_k);
-    gam_n = Gamma.nL; % HARD-CODE
+    gam_n = Gamma.nH; % HARD-CODE
     
     % On GPU
     dtDelY_gpu = gpuArray(dtDelY);

@@ -43,11 +43,11 @@ close all
 reduceTo_lres = 64;
 reduceTo_hres = 128;
 patchsize_lres = 4;
-patchsize_hres = 8;
+patchsize_hres = 9;
 column = 1;
-totalImages = 10;
+totalImages = 14;
 overlap_low = 1;
-overlap_high = 2;
+overlap_high = 3;
 [YL, means_of_YL] = GetDataMatrix([imgPath 'lres/'],...
     reduceTo_lres, patchsize_lres, totalImages, overlap_low);
 [YH, means_of_YH] = GetDataMatrix([imgPath 'hres/'],...
@@ -57,7 +57,7 @@ overlap_high = 2;
 
 %% Initialize Layer 1
 close all
-K1 = 400;
+K1 = 200;
 
 Alpha1 = {};
 Beta1 = {};
@@ -127,7 +127,7 @@ round_2 = round_1 + tune_length;
 
 mse_array = zeros(2000, 1);
 
-isAddingMean = true;
+isAddingMean = false;
 for gr = 1:2000
     % Test here only
     YH_approx = DH*(S.*B) + repmat(biasH, 1, c.N);
@@ -149,13 +149,14 @@ for gr = 1:2000
     title('Actual_HRes')
 
     subplot(2, 5, 2)
-    recon = patch2im(...
+    recon_model = patch2im(...
         YH_approx, ...
         r, reduceTo_hres, reduceTo_hres,...
         patchsize_hres, isAddingMean*means_of_YH, overlap_high);
-    imshow(recon)
+    imshow(recon_model)
     title('Recon_HRes')
-
+    fprintf('PSNR[ModelH]: %10.8f\n', psnr(recon_model, recon));
+    
     subplot(2, 5, 3)
 %     imshow(patch2im(Y(17:80,(r+1):(r+l)), patchsize_hres))
     recon = patch2im(...
@@ -166,12 +167,13 @@ for gr = 1:2000
     title('Actual_LRes')        
 
     subplot(2, 5, 4)
-    recon = patch2im(...
+    recon_model = patch2im(...
         YL_approx, ...
         r, reduceTo_lres, reduceTo_lres,...
         patchsize_lres, isAddingMean*means_of_YL, overlap_low);
-    imshow(recon)
+    imshow(recon_model)
     title('Recon_LRes')
+    fprintf('PSNR[ModelL]: %10.8f\n', psnr(recon_model, recon));
     
     subplot(2, 5, 5)
     imagesc(B)
@@ -183,7 +185,7 @@ for gr = 1:2000
     % LEarn layer 1
     [ DH, DL, S, B, PI, post_PI, biasH, biasL, Gamma ] = ...
         GibbsLevel( YH, YL, DH, DL, S, B, PI, post_PI,...
-        biasH, biasL, Gamma, Alpha1, Beta1, c );        
+        biasH, biasL, Gamma, Alpha1, Beta1, c, false );        
     fprintf('[V1_L1]Iteration Complete: %d \n', gr)
     
     if mod(gr, 2) == 0

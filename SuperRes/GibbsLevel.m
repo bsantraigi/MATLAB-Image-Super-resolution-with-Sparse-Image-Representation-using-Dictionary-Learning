@@ -7,9 +7,8 @@ function [ DH, DL, S, B, PI, post_PI, biasH, biasL, Gamma ] = ...
 showTime = false;
 if nargin > 14
     TestingMode = varargin{1};
-    locate = varargin{2};
 else
-    TestingMode = false;
+    TestingMode = true;
 end
 %% SamplePI - CHECKED
 if showTime
@@ -29,9 +28,7 @@ end
 if ~TestingMode
     [B, post_PI] = sampleB(YH, YL, DH, DL, S, B, PI, post_PI, biasH, biasL, Gamma, c);
 else
-    [ ~, ~, YHL ] = ReconstructAll( DH, DL,...
-        S, B, biasH, biasL, c, YL, locate, true );
-    [B, post_PI] = sampleB_Test(YHL, DH, S, B, PI, post_PI, biasH, Gamma, c);
+    [B, post_PI] = sampleB_Test(YL, DL, S, B, PI, post_PI, biasL, Gamma, c);
 end
 if showTime
     t = toc;
@@ -70,9 +67,7 @@ end
 if ~TestingMode
     S = sampleS(YH, YL, DH, DL, S, B, biasH, biasL, Gamma, c);
 else
-    [ ~, ~, YHL ] = ReconstructAll( DH, DL,...
-        S, B, biasH, biasL, c, YL, locate, true );
-    S = sampleS_Test(YHL, DH, S, B, biasH, Gamma, c);
+    S = sampleS_Test(YL, DL, S, B, biasL, Gamma, c);
 end
 if showTime
     t = toc;
@@ -93,4 +88,3 @@ if showTime
 end
 
 end
-
