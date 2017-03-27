@@ -13,45 +13,10 @@ biasFull = bias;
 biasL = bias(1:patchsize_lres^2);
 biasH = bias((1+patchsize_lres^2):end);
 bias = biasL;
-%% Create Lf - Blurring then Downsampling
-pH = patchsize_hres;
-pL = patchsize_lres;
-pHsQ = pH^2;
-pLsQ = pL^2;
-
-LfB = zeros(pHsQ, pHsQ);
-
-sigma_blur = 1;
-es = exp(-1/(2*sigma_blur^2));
-for r = 1:pHsQ
-    % Each row will have 9 non-zero coefficients
-    % for the 8 neighbours and its own pixel location
-    if floor((r-1)/pH) == 0 || mod(r, pH) == 0 || ...
-            mod(r-1, pH) == 0 || ceil(r/pH) == pH
-        continue
-    end
-    LfB(r, r) = 1;
-    LfB(r, [r - 1, r + 1, r - pH, r + pH]) = es;
-    LfB(r, [r - pH + 1, r - pH - 1, ...
-        r + pH + 1, r + pH - 1]) = es^2;
-    LfB(r, :) = LfB(r, :)/sum(LfB(r, :));
-end
-
-LfD = zeros(pLsQ, pHsQ);
-
-for r = 1:pLsQ
-    rx = 2*(floor((r - 1)/pL) + 1);
-    ry = 2*(mod(r - 1, pL) + 1);
-    rH = (rx - 1)*pH + ry;
-    LfD(r, rH) = 1;
-end
-Lf = LfD * LfB;
-
 %% Set folder
 close all
 imgPath = './'
 typeofimage = 'super_res_test/'
-
 %% Matrix created here
 close all
 % reduceTo_lres = 64;
@@ -60,23 +25,14 @@ close all
 % patchsize_hres = 8;
 column = 1;
 totalImages = 2;
-% overlap_low = 1;
-% overlap_high = 2;
-[YL2, means_of_YL] = GetDataMatrix([imgPath 'lres/'],...
+% overlap_low = 2;
+% overlap_high = 4;
+[YL, means_of_YL] = GetDataMatrix([imgPath 'lres/'],...
     reduceTo_lres, patchsize_lres, totalImages, overlap_low);
-[YH, means_of_YH] = GetDataMatrix([imgPath 'hres/'],...
+[YH, means_of_YH] = GetDataMatrix_4x([imgPath 'hres/'],...
     reduceTo_hres, patchsize_hres, totalImages, overlap_high);
-YL = Lf*YH;
 Y = [YL];
-% means_of_Y = [means_of_YL; means_of_YH];
-%% Compare 'Blurred &' vs. 'Just downsampled' images
-figure(1)
-subplot(1, 3, 1)
-imshow(patch2im(YH, 1, 128, 128, 9, means_of_YH, 3));
-subplot(1, 3, 2)
-imshow(patch2im(YL, 1, 64, 64, 4, means_of_YH, 1));
-subplot(1, 3, 3)
-imshow(patch2im(YL2, 1, 64, 64, 4, means_of_YH, 1));
+means_of_Y = [means_of_YL; means_of_YH];
 %% Initialize Layer 1
 
 % K1 = 200;
@@ -103,7 +59,6 @@ tic
 [ S, B, post_PI, c ] =...
     InitAll_Test( YH, YL, K1, Alpha1, Beta1, PI, Gamma );
 toc
-
 %% Plot images
 training_started=false;
 figure(1)
@@ -123,23 +78,17 @@ recon = patch2im(...
     r, reduceTo_lres, reduceTo_lres,...
     patchsize_lres, isAddingMean*means_of_YL, overlap_low);
 imshow(recon)
-title('Recon_LRes')
+title('Actual_LRes')
 
+%% Form 'Locate-Transformation'
+locate = (repmat(8*(1:2:8)', 1, 4)+repmat((1:2:8), 4, 1) + 1)';
+locate = locate(:);
 %% Plot recon
+[ YH_approx, YL_approx, YHL ] = ...
+    ReconstructAll( DH, DL, S, B, biasH, biasL, c, YL, locate, false );
+
 figure(2)
 r = 1;
-if n_samples > 0
-    S_avg = mean(lastSSamples(:, :, 1:min(100, n_samples)), 3);
-    B_avg = mean(lastBSamples(:, :, 1:min(100, n_samples)), 3);
-%     B_avg(B_avg > 0.95) = 1;
-%     B_avg(B_avg < 1) = 0;
-else
-    S_avg = S;
-    B_avg = B;
-end
-YH_approx = DH*(S_avg.*B_avg) + repmat(biasH, 1, c.N);
-YL_approx = DL*(S_avg.*B_avg) + repmat(biasL, 1, c.N);
-
 subplot(2, 5, 1)
 recon = patch2im(...
     YH, ...
@@ -185,19 +134,21 @@ recon = patch2im(...
 sres_bcubic = imresize(recon, 2, 'bicubic');
 imshow(sres_bcubic)
 title('Bicubic')
-%% Sample Stores
-n_samples = 0;
-last_N = 50;
-lastSSamples = zeros(c.K, c.N, last_N);
-lastBSamples = zeros(c.K, c.N, last_N);
-lastYHSamples = zeros(c.MH, c.N, last_N);
+
+subplot(2, 5, 7)
+recon = patch2im(...
+    YHL, ...
+    r, reduceTo_hres, reduceTo_hres,...
+    patchsize_hres, isAddingMean*means_of_YH, overlap_high);
+imshow(recon)
+title('YLH')
 %% Gibbs
 normalize = @(Mat) (Mat - min(Mat(:)))/(max(Mat(:)) - min(Mat(:)));
 % Pack_n_Show_dictionary(DH, DL);
 figure(2)
 clf
 
-r = 2;
+r = 1;
 isAddingMean = true;
 recon = patch2im(...
         Y, ...
@@ -214,23 +165,8 @@ round_2 = round_1 + tune_length;
 mse_array = zeros(2000, 1);
 for gr = 1:2000
     % Test here only
-    if n_samples > 0
-        S_avg = mean(lastSSamples(:, :, 1:min(last_N, n_samples)), 3);
-        B_avg = mean(lastBSamples(:, :, 1:min(last_N, n_samples)), 3);
-        B_avg(B_avg > 0.5) = 1;
-        B_avg(B_avg < 1) = 0;
-    else
-        S_avg = S;
-        B_avg = B;
-    end
-    YH_approx = DH*(S.*B) + repmat(biasH, 1, c.N);
-    YL_approx = DL*(S_avg.*B_avg) + repmat(biasL, 1, c.N);
-    
-    if n_samples > 0
-        YH_m = mean(lastYHSamples(:, :, 1:min(last_N, n_samples)), 3);
-    else
-        YH_m = YH_approx;
-    end
+    [ YH_approx, YL_approx, YHL ] = ReconstructAll( DH, DL,...
+        S, B, biasH, biasL, c, YL, locate, false );
     
     erH = (sum((YH_approx(:) - YH(:)).^2))/(c.N*c.MH);
     erL = (sum((YL_approx(:) - YL(:)).^2))/(c.N*c.ML);
@@ -245,11 +181,10 @@ for gr = 1:2000
         patchsize_hres, isAddingMean*means_of_YH, overlap_high);
     imshow(recon);
     title('Actual_HRes')
-    fprintf('PSNR[Bicubic]: %10.8f\n', psnr(sres_bcubic, recon));
 
     subplot(2, 5, 2)
     recon = patch2im(...
-        YH_m, ...
+        YH_approx, ...
         r, reduceTo_hres, reduceTo_hres,...
         patchsize_hres, isAddingMean*means_of_YH, overlap_high);
     imshow(recon)
@@ -273,7 +208,7 @@ for gr = 1:2000
     title('Recon_LRes')
     
     subplot(2, 5, 5)
-    imagesc(B_avg)
+    imagesc(B)
     title('B Matrix')
     
     subplot(2, 5, 6)
@@ -282,37 +217,11 @@ for gr = 1:2000
     
     subplot(2, 5, 7)
     recon = patch2im(...
-        YH, ...
+        YHL, ...
         r, reduceTo_hres, reduceTo_hres,...
-        patchsize_hres, 0*means_of_YH, overlap_high);
-    imshow(recon);
-    title('Actual_HRes')
-
-    subplot(2, 5, 8)
-    recon_model = patch2im(...
-        YH_m, ...
-        r, reduceTo_hres, reduceTo_hres,...
-        patchsize_hres, 0*means_of_YH, overlap_high);
-    imshow(recon_model)
-    title('Recon_HRes')
-    fprintf('PSNR[Model]: %10.8f\n', psnr(recon_model, recon));
-    
-    subplot(2, 5, 9)
-%     imshow(patch2im(Y(17:80,(r+1):(r+l)), patchsize_hres))
-    recon = patch2im(...
-        YL, ...
-        r, reduceTo_lres, reduceTo_lres,...
-        patchsize_lres, 0*means_of_YL, overlap_low);
-    imshow(recon);
-    title('Actual_LRes')        
-
-    subplot(2, 5, 10)
-    recon = patch2im(...
-        YL_approx, ...
-        r, reduceTo_lres, reduceTo_lres,...
-        patchsize_lres, 0*means_of_YL, overlap_low);
+        patchsize_hres, isAddingMean*means_of_YH, overlap_high);
     imshow(recon)
-    title('Recon_LRes')
+    title('YLH')
     
     drawnow
     
@@ -320,13 +229,7 @@ for gr = 1:2000
     % LEarn layer 1
     [ ~, ~, S, B, ~, post_PI, ~, ~, ~ ] = ...
         GibbsLevel( YH, YL, DH, DL, S, B, PI, post_PI,...
-        biasH, biasL, Gamma, Alpha1, Beta1, c, true );
-    
-    lastBSamples(:, :, mod(n_samples, last_N) + 1) = B;
-    lastSSamples(:, :, mod(n_samples, last_N) + 1) = S;
-    lastYHSamples(:, :, mod(n_samples, last_N) + 1) = YH_approx;
-    n_samples  = n_samples + 1;
-    
+        biasH, biasL, Gamma, Alpha1, Beta1, c, true, locate );
     fprintf('[V1_L1]Iteration Complete: %d \n', gr)
     
     if mod(gr, 2) == 0
@@ -364,17 +267,17 @@ reshape(Lf * p(:), 4, 4)
 %% Optimizer
 
 % Lf matrix - Down-Sampler matrix
-% locate = (repmat(...
-%     patchsize_hres*(1:2:patchsize_hres)', 1, patchsize_lres)+...
-%     repmat((1:2:patchsize_hres), patchsize_lres, 1) + 1)';
-% locate = locate(:);
-% Lf = eye(patchsize_hres^2);
-% Lf = Lf(locate, :);
+locate = (repmat(...
+    patchsize_hres*(1:2:patchsize_hres)', 1, patchsize_lres)+...
+    repmat((1:2:patchsize_hres), patchsize_lres, 1) + 1)';
+locate = locate(:);
+Lf = eye(patchsize_hres^2);
+Lf = Lf(locate, :);
 
-SNew = S_avg;
+SNew = 0*S;
 % Hyperparameters
 k1 = 1; % HyperParam for body similarity
-k2 = 0.2; % HyperParam for similarity with low res image
+k2 = 1; % HyperParam for similarity with low res image
 
 % Define DHU and DHL
 DHU = DH(1:(overlap_high*patchsize_hres), :);
@@ -384,7 +287,7 @@ DHBody = DH(...
 LfDH = (Lf*DH);
 % Calculate delJ
 figure(4)
-for iter_counter = 1:30
+for iter_counter = 1:100
     if mod(iter_counter, 10) == 0
         fprintf('Iteration: %d\n',  iter_counter);
     end
@@ -392,7 +295,7 @@ for iter_counter = 1:30
     for i = 2:size(S,2)
         delT1 = -2*(DHU'*DHL)*(SNew(:,i - 1).*B(:, i -1)) +...
             2*(DHU'*DHU)*(SNew(:,i).*B(:,i));
-        delT2 = -2*k1*(DHBody'*DHBody)*(S_avg(:,i).*B(:,i)) + ...
+        delT2 = -2*k1*(DHBody'*DHBody)*(S(:,i).*B(:,i)) + ...
             2*k1*(DHBody'*DHBody)*(SNew(:,i).*B(:,i));
         delT3 = -2*k2*LfDH'*Y(:, i) + ...
             2*k2*(LfDH'*LfDH)*(SNew(:,i).*B(:,i));
@@ -413,7 +316,7 @@ for iter_counter = 1:30
     imshow(recon);
     title('Actual_HRes')
 
-    Y_approxH = DH*(S_avg.*B) + repmat(biasH, 1, c.N);
+    Y_approxH = DH*(S.*B) + repmat(biasH, 1, c.N);
     subplot(2, 5, 2)
     recon = patch2im(...
         Y_approxH, ...
@@ -427,7 +330,7 @@ for iter_counter = 1:30
     recon = patch2im(...
         Y_approxH, ...
         which_image_2plot, reduceTo_hres, reduceTo_hres,...
-        patchsize_hres, isAddingMean*means_of_YH, overlap_high);
+        patchsize_hres, isAddingMean*means_of_YL, overlap_high);
     imshow(recon)
     title('PostRecon_HRes')
     drawnow

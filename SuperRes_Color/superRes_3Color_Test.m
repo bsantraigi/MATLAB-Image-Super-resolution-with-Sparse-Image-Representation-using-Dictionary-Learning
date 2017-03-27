@@ -4,48 +4,8 @@ gcp
 tic
 % load('D:\Users\Bishal Santra\Documents\MATLAB\MTP\SuperRes\WSs_10thSem\8_n_16_coupled_v3_mean_subbed.mat')
 toc
-DL = D(1:patchsize_lres^2, :);
-DH = D((1+ patchsize_lres^2):end, :);
-DFull = D;
-D = DL;
-
-biasFull = bias;
-biasL = bias(1:patchsize_lres^2);
-biasH = bias((1+patchsize_lres^2):end);
-bias = biasL;
 %% Create Lf - Blurring then Downsampling
-pH = patchsize_hres;
-pL = patchsize_lres;
-pHsQ = pH^2;
-pLsQ = pL^2;
-
-LfB = zeros(pHsQ, pHsQ);
-
-sigma_blur = 1;
-es = exp(-1/(2*sigma_blur^2));
-for r = 1:pHsQ
-    % Each row will have 9 non-zero coefficients
-    % for the 8 neighbours and its own pixel location
-    if floor((r-1)/pH) == 0 || mod(r, pH) == 0 || ...
-            mod(r-1, pH) == 0 || ceil(r/pH) == pH
-        continue
-    end
-    LfB(r, r) = 1;
-    LfB(r, [r - 1, r + 1, r - pH, r + pH]) = es;
-    LfB(r, [r - pH + 1, r - pH - 1, ...
-        r + pH + 1, r + pH - 1]) = es^2;
-    LfB(r, :) = LfB(r, :)/sum(LfB(r, :));
-end
-
-LfD = zeros(pLsQ, pHsQ);
-
-for r = 1:pLsQ
-    rx = 2*(floor((r - 1)/pL) + 1);
-    ry = 2*(mod(r - 1, pL) + 1);
-    rH = (rx - 1)*pH + ry;
-    LfD(r, rH) = 1;
-end
-Lf = LfD * LfB;
+Lf = GetLf(patchsize_hres, patchsize_lres);
 
 %% Set folder
 close all
@@ -59,24 +19,43 @@ close all
 % patchsize_lres = 4;
 % patchsize_hres = 8;
 column = 1;
-totalImages = 2;
+totalImages = 4;
 % overlap_low = 1;
 % overlap_high = 2;
-[YL2, means_of_YL] = GetDataMatrix([imgPath 'lres/'],...
+[YL2, Cb_of_YL, Cr_of_YL] = GetDataMatrix([imgPath 'lresTest/'],...
     reduceTo_lres, patchsize_lres, totalImages, overlap_low);
-[YH, means_of_YH] = GetDataMatrix([imgPath 'hres/'],...
+[YH, Cb_of_YH_original, Cr_of_YH_original] = GetDataMatrix([imgPath 'hresTest/'],...
     reduceTo_hres, patchsize_hres, totalImages, overlap_high);
+
 YL = Lf*YH;
 Y = [YL];
-% means_of_Y = [means_of_YL; means_of_YH];
+
+scale_up = 3;
+Cb_of_YH = Cb_of_YH_original*0;
+Cr_of_YH = Cr_of_YH_original*0;
+for imx = 1:totalImages
+    Cb_of_YH(:,:,imx) = imresize(Cb_of_YL(:,:,imx), scale_up, 'bicubic');
+    Cr_of_YH(:,:,imx) = imresize(Cr_of_YL(:,:,imx), scale_up, 'bicubic');
+end
+
 %% Compare 'Blurred &' vs. 'Just downsampled' images
 figure(1)
+r = 4;
 subplot(1, 3, 1)
-imshow(patch2im(YH, 1, 128, 128, 9, means_of_YH, 3));
+imshow(ycbcr2rgb(...
+    patch2im(YH, r, reduceTo_hres, reduceTo_hres,...
+    patchsize_hres, Cb_of_YH_original, Cr_of_YH_original, overlap_high))...
+    );
 subplot(1, 3, 2)
-imshow(patch2im(YL, 1, 64, 64, 4, means_of_YH, 1));
+imshow(ycbcr2rgb(...
+    patch2im(YL, r, reduceTo_lres, reduceTo_lres,...
+    patchsize_lres, Cb_of_YL, Cr_of_YL, overlap_low))...
+    );
 subplot(1, 3, 3)
-imshow(patch2im(YL2, 1, 64, 64, 4, means_of_YH, 1));
+imshow(ycbcr2rgb(...
+    patch2im(YL2, r, reduceTo_lres, reduceTo_lres,...
+    patchsize_lres, Cb_of_YL, Cr_of_YL, overlap_low))...
+    );
 %% Initialize Layer 1
 
 % K1 = 200;
@@ -108,7 +87,7 @@ toc
 training_started=false;
 figure(1)
 clf
-r = 1;
+r = 3;
 subplot(2, 5, 1)
 recon = patch2im(...
     YH, ...
@@ -127,63 +106,77 @@ title('Recon_LRes')
 
 %% Plot recon
 figure(2)
-r = 1;
+r = 4;
+recon = patch2im(...
+        Y, ...
+        r, reduceTo_lres, reduceTo_lres,...
+        patchsize_lres, Cb_of_YL, Cr_of_YL, overlap_low);
+sres_bcubic = imresize(recon, 2, 'bicubic');
 if n_samples > 0
-    S_avg = mean(lastSSamples(:, :, 1:min(100, n_samples)), 3);
-    B_avg = mean(lastBSamples(:, :, 1:min(100, n_samples)), 3);
-%     B_avg(B_avg > 0.95) = 1;
-%     B_avg(B_avg < 1) = 0;
+    S_avg = mean(lastSSamples(:, :, 1:min(last_N, n_samples)), 3);
+    B_avg = mean(lastBSamples(:, :, 1:min(last_N, n_samples)), 3);
+    B_avg(B_avg > 0.5) = 1;
+    B_avg(B_avg < 1) = 0;
 else
     S_avg = S;
     B_avg = B;
 end
-YH_approx = DH*(S_avg.*B_avg) + repmat(biasH, 1, c.N);
-YL_approx = DL*(S_avg.*B_avg) + repmat(biasL, 1, c.N);
+YH_approx = DH*(S.*B) + repmat(biasH, 1, c.N);
+YL_approx = DL*(S.*B) + repmat(biasL, 1, c.N);
 
+if n_samples > 0
+    YH_m = mean(lastYHSamples(:, :, 1:min(last_N, n_samples)), 3);
+else
+    YH_m = YH_approx;
+end
+
+% Original High Resolution Image
 subplot(2, 5, 1)
 recon = patch2im(...
     YH, ...
     r, reduceTo_hres, reduceTo_hres,...
-    patchsize_hres, isAddingMean*means_of_YH, overlap_high);
-imshow(recon);
+    patchsize_hres, Cb_of_YH_original, Cr_of_YH_original, overlap_high);
+imshow(ycbcr2rgb(recon));
 title('Actual_HRes')
 
+% Reconstructed HIgh resolution image
 subplot(2, 5, 2)
-recon = patch2im(...
-    YH_approx, ...
+reconH = patch2im(...
+    YH_m, ...
     r, reduceTo_hres, reduceTo_hres,...
-    patchsize_hres, isAddingMean*means_of_YH, overlap_high);
-imshow(recon)
+    patchsize_hres, Cb_of_YH, Cr_of_YH, overlap_high);
+imshow(ycbcr2rgb(reconH));
 title('Recon_HRes')
+
+% Model evaluations
+fprintf('PSNR[Bicubic]: %10.8f\n', psnr(sres_bcubic(:,:,1), recon(:,:,1)));
+fprintf('PSNR[Model]: %10.8f\n', psnr(reconH(:,:,1), recon(:,:,1)));
+fprintf('RMSE[Bicubic]: %10.8f\n', rmse(sres_bcubic(:,:,1), recon(:,:,1)));
+fprintf('RMSE[Model]: %10.8f\n', rmse(reconH(:,:,1), recon(:,:,1)));
 
 subplot(2, 5, 3)
 %     imshow(patch2im(Y(17:80,(r+1):(r+l)), patchsize_hres))
 recon = patch2im(...
     YL, ...
     r, reduceTo_lres, reduceTo_lres,...
-    patchsize_lres, isAddingMean*means_of_YL, overlap_low);
-imshow(recon);
+    patchsize_lres, Cb_of_YL, Cr_of_YL, overlap_low);
+imshow(ycbcr2rgb(recon));
 title('Actual_LRes')        
 
 subplot(2, 5, 4)
 recon = patch2im(...
     YL_approx, ...
     r, reduceTo_lres, reduceTo_lres,...
-    patchsize_lres, isAddingMean*means_of_YL, overlap_low);
-imshow(recon)
+    patchsize_lres, Cb_of_YL, Cr_of_YL, overlap_low);
+imshow(ycbcr2rgb(recon));
 title('Recon_LRes')
 
 subplot(2, 5, 5)
-imagesc(B)
+imagesc(B_avg)
 title('B Matrix')
 
 subplot(2, 5, 6)
-recon = patch2im(...
-    Y, ...
-    r, reduceTo_lres, reduceTo_lres,...
-    patchsize_lres, isAddingMean*means_of_YL, overlap_low);
-sres_bcubic = imresize(recon, 2, 'bicubic');
-imshow(sres_bcubic)
+imshow(ycbcr2rgb(sres_bcubic));
 title('Bicubic')
 %% Sample Stores
 n_samples = 0;
@@ -193,17 +186,17 @@ lastBSamples = zeros(c.K, c.N, last_N);
 lastYHSamples = zeros(c.MH, c.N, last_N);
 %% Gibbs
 normalize = @(Mat) (Mat - min(Mat(:)))/(max(Mat(:)) - min(Mat(:)));
+rmse = @(A, ref) sqrt(mean((255*A(:) - 255*ref(:)).^2));
 % Pack_n_Show_dictionary(DH, DL);
 figure(2)
 clf
 
 r = 2;
-isAddingMean = true;
 recon = patch2im(...
         Y, ...
         r, reduceTo_lres, reduceTo_lres,...
-        patchsize_lres, isAddingMean*means_of_YL, overlap_low);
-sres_bcubic = imresize(recon, 2, 'bicubic');
+        patchsize_lres, Cb_of_YL, Cr_of_YL, overlap_low);
+sres_bcubic = imresize(recon, scale_up, 'bicubic');
 
 training_started=true;
 
@@ -214,6 +207,7 @@ round_2 = round_1 + tune_length;
 mse_array = zeros(2000, 1);
 for gr = 1:2000
     % Test here only
+    % Calculate averages
     if n_samples > 0
         S_avg = mean(lastSSamples(:, :, 1:min(last_N, n_samples)), 3);
         B_avg = mean(lastBSamples(:, :, 1:min(last_N, n_samples)), 3);
@@ -224,13 +218,14 @@ for gr = 1:2000
         B_avg = B;
     end
     YH_approx = DH*(S.*B) + repmat(biasH, 1, c.N);
-    YL_approx = DL*(S_avg.*B_avg) + repmat(biasL, 1, c.N);
+    YL_approx = DL*(S.*B) + repmat(biasL, 1, c.N);
     
     if n_samples > 0
         YH_m = mean(lastYHSamples(:, :, 1:min(last_N, n_samples)), 3);
     else
         YH_m = YH_approx;
     end
+%     YH_m = YH_approx;
     
     erH = (sum((YH_approx(:) - YH(:)).^2))/(c.N*c.MH);
     erL = (sum((YL_approx(:) - YL(:)).^2))/(c.N*c.ML);
@@ -238,38 +233,46 @@ for gr = 1:2000
     fprintf('MSE: %10.8f, %10.8f\n', erH, erL);
     mse_array(gr) = erH;
     
+    % Original High Resolution Image
     subplot(2, 5, 1)
     recon = patch2im(...
         YH, ...
         r, reduceTo_hres, reduceTo_hres,...
-        patchsize_hres, isAddingMean*means_of_YH, overlap_high);
-    imshow(recon);
+        patchsize_hres, Cb_of_YH_original, Cr_of_YH_original, overlap_high);
+    imshow(ycbcr2rgb(recon));
     title('Actual_HRes')
-    fprintf('PSNR[Bicubic]: %10.8f\n', psnr(sres_bcubic, recon));
+    
 
+    % Reconstructed HIgh resolution image
     subplot(2, 5, 2)
-    recon = patch2im(...
+    reconH = patch2im(...
         YH_m, ...
         r, reduceTo_hres, reduceTo_hres,...
-        patchsize_hres, isAddingMean*means_of_YH, overlap_high);
-    imshow(recon)
+        patchsize_hres, Cb_of_YH, Cr_of_YH, overlap_high);
+    imshow(ycbcr2rgb(reconH));
     title('Recon_HRes')
+    
+    % Model evaluations
+    fprintf('PSNR[Bicubic]: %10.8f\n', psnr(sres_bcubic(:,:,1), recon(:,:,1)));
+    fprintf('PSNR[Model]: %10.8f\n', psnr(reconH(:,:,1), recon(:,:,1)));
+    fprintf('RMSE[Bicubic]: %10.8f\n', rmse(sres_bcubic(:,:,1), recon(:,:,1)));
+    fprintf('RMSE[Model]: %10.8f\n', rmse(reconH(:,:,1), recon(:,:,1)));
 
     subplot(2, 5, 3)
 %     imshow(patch2im(Y(17:80,(r+1):(r+l)), patchsize_hres))
     recon = patch2im(...
         YL, ...
         r, reduceTo_lres, reduceTo_lres,...
-        patchsize_lres, isAddingMean*means_of_YL, overlap_low);
-    imshow(recon);
+        patchsize_lres, Cb_of_YL, Cr_of_YL, overlap_low);
+    imshow(ycbcr2rgb(recon));
     title('Actual_LRes')        
 
     subplot(2, 5, 4)
     recon = patch2im(...
         YL_approx, ...
         r, reduceTo_lres, reduceTo_lres,...
-        patchsize_lres, isAddingMean*means_of_YL, overlap_low);
-    imshow(recon)
+        patchsize_lres, Cb_of_YL, Cr_of_YL, overlap_low);
+    imshow(ycbcr2rgb(recon));
     title('Recon_LRes')
     
     subplot(2, 5, 5)
@@ -277,43 +280,9 @@ for gr = 1:2000
     title('B Matrix')
     
     subplot(2, 5, 6)
-    imshow(sres_bcubic)
+    imshow(ycbcr2rgb(sres_bcubic));
     title('Bicubic')
-    
-    subplot(2, 5, 7)
-    recon = patch2im(...
-        YH, ...
-        r, reduceTo_hres, reduceTo_hres,...
-        patchsize_hres, 0*means_of_YH, overlap_high);
-    imshow(recon);
-    title('Actual_HRes')
 
-    subplot(2, 5, 8)
-    recon_model = patch2im(...
-        YH_m, ...
-        r, reduceTo_hres, reduceTo_hres,...
-        patchsize_hres, 0*means_of_YH, overlap_high);
-    imshow(recon_model)
-    title('Recon_HRes')
-    fprintf('PSNR[Model]: %10.8f\n', psnr(recon_model, recon));
-    
-    subplot(2, 5, 9)
-%     imshow(patch2im(Y(17:80,(r+1):(r+l)), patchsize_hres))
-    recon = patch2im(...
-        YL, ...
-        r, reduceTo_lres, reduceTo_lres,...
-        patchsize_lres, 0*means_of_YL, overlap_low);
-    imshow(recon);
-    title('Actual_LRes')        
-
-    subplot(2, 5, 10)
-    recon = patch2im(...
-        YL_approx, ...
-        r, reduceTo_lres, reduceTo_lres,...
-        patchsize_lres, 0*means_of_YL, overlap_low);
-    imshow(recon)
-    title('Recon_LRes')
-    
     drawnow
     
     tic
