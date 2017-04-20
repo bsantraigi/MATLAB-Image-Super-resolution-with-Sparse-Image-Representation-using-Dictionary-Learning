@@ -1,19 +1,20 @@
 function [ Y, Cb_of_Y, Cr_of_Y ] = GetDataMatrix( ...
-    folder, reduceTo, patchsize, totalImages, overlap )
+    folder, reduceTo, patchsize, imrange, overlap )
 %GETDATAMATRIX Summary of this function goes here
 %   Detailed explanation goes here
 
 fl = dir(folder);
 Y = [];
+totalImages = length(imrange);
 Cb_of_Y = zeros(reduceTo, reduceTo, totalImages);
 Cr_of_Y = zeros(reduceTo, reduceTo, totalImages);
 % Auto calculate gap
 % gap = 7;
 imx = 1;
 % for imindex = floor(linspace(3, length(fl), totalImages))
-for imindex = 3:(3+totalImages - 1)
+for imindex = imrange + 2
     imgTemp = imread([folder fl(imindex).name]);
-    
+    fprintf('Reading %d: %s\n', imx, fl(imindex).name);
     % Resize
     imgTemp = imresize(imgTemp, ...
         reduceTo/min([size(imgTemp, 1) size(imgTemp, 2)]));

@@ -1,8 +1,8 @@
 clear
 close all
 % pathRoot = 'D:/ProjectData/caltech101/101_ObjectCategories/super_res_test/';
-imcategory = 'okapi';
-pname = 'image_0030.jpg';
+imcategory = 'Faces_easy';
+pname = 'image_0430.jpg';
 im1 = imread(['D:\ProjectData\caltech101\101_ObjectCategories\' imcategory '\' pname]);
 if size(im1, 3) > 1
 % im1 = double(rgb2gray(im1))/255;
@@ -11,9 +11,10 @@ else
 end
 figure
 imshow(im1)
+
 L = min(size(im1(:,:,1)));
-SZ = 128.0;
-if(L > SZ)
+SZ = 256.0;
+if(L >= SZ)
     im1 = imresize(im1, SZ/L);
     
     im1 = im1(1:SZ, 1:SZ, :);
@@ -31,6 +32,7 @@ if(L > SZ)
 else
     fprintf('Image too small\n')
 end
+close all
 %% (Dictionary) Coefficient learning follows
 %% Load Layer 1
 gcp
@@ -44,15 +46,16 @@ typeofimage = 'super_res_test/'
 %% Matrix created here
 close all
 
-reduceTo_lres = 64;
-reduceTo_hres = 192;
+scale_up = 3;
+reduceTo_lres = 85;
+reduceTo_hres = reduceTo_lres*scale_up
 patchsize_lres = 4;
 patchsize_hres = 13;
-
+%% Collect Images
 Lf = GetLf(patchsize_hres, patchsize_lres);
 
 column = 1;
-totalImages = 14;
+totalImages = 15;
 overlap_low = 1;
 overlap_high = 4;
 [YL, Cb_of_YL, Cr_of_YL] = GetDataMatrix([imgPath 'lres/'],...
@@ -63,7 +66,6 @@ overlap_high = 4;
 % means_of_Y = [means_of_YL; means_of_YH];
 % YL = Lf*YH;
 
-scale_up = 3;
 Cb_of_YH = Cb_of_YH_original*0;
 Cr_of_YH = Cr_of_YH_original*0;
 for imx = 1:totalImages
@@ -72,7 +74,7 @@ for imx = 1:totalImages
 end
 %% Initialize Layer 1
 close all
-K1 = 400;
+K1 = 200;
 
 Alpha1 = {};
 Beta1 = {};

@@ -1,4 +1,4 @@
-function [ I ] = patch2im(...
+function [ I, I2 ] = patch2im(...
     p, image_id, numrows, numcols, block,...
     Cb_of_Y, Cr_of_Y, overlap)
 %PATCH2IMAGE Summary of this function goes here
@@ -44,6 +44,7 @@ col_picks = 1:(patchCols - overlap):numcols;
 % Do zero padding to make sure no pixel on the edges gets missed
 I = zeros(row_picks(end) + patchRows - 1,...
     col_picks(end) + patchCols - 1);
+I2 = I;
 % if row_picks(end) + patchRows - 1 > numrows
 %     I((numrows + 1):(row_picks(end) + patchRows - 1), :) = 0;
 % end
@@ -56,8 +57,17 @@ pindex = (image_id - 1)*length(row_picks)*length(col_picks) + 1;
 
 for yrow = row_picks
     for xcol = col_picks
-        I(yrow:(yrow + patchRows - 1),xcol:(xcol+patchCols-1)) = ...
-            reshape(p(:, pindex), patchCols, patchRows);
+        pat = reshape(p(:, pindex), patchCols, patchRows);
+        if xcol == 1 || yrow == 1
+            I(yrow:(yrow + patchRows - 1),xcol:(xcol+patchCols-1)) = ...
+                pat;
+        else
+            
+            I((yrow + overlap - 1):(yrow + patchRows - 1),(xcol + overlap - 1):(xcol+patchCols-1)) = ...
+                pat((overlap):end, (overlap):end);
+        end
+        I2(yrow:(yrow + patchRows - 1),xcol:(xcol+patchCols-1)) = ...
+                pat;
         pindex = pindex + 1;
     end
 end
@@ -66,5 +76,10 @@ I = I(1:numrows, 1:numcols);
 I(:,:,1) = I;
 I(:,:, 2) = Cb_of_Y(:,:, image_id);
 I(:,:, 3) = Cr_of_Y(:,:, image_id);
+
+I2 = I2(1:numrows, 1:numcols);
+I2(:,:,1) = I2;
+I2(:,:, 2) = Cb_of_Y(:,:, image_id);
+I2(:,:, 3) = Cr_of_Y(:,:, image_id);
 end
 
