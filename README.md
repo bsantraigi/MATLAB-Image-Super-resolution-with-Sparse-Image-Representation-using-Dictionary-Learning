@@ -1,4 +1,4 @@
-# MATLAB-Image-Super-resolution-with-Sparse-Image-Representation-using-Dictionary-Learning
+# MATLAB Image Super resolution with Sparse Image Representation using Dictionary Learning
 
 Code for MTP Thesis (https://bsantraigi.github.io/papers/report_10thsem_mtp_small.pdf)
 
